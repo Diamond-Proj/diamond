@@ -6,11 +6,10 @@ import requests
 from flask import flash, jsonify, make_response, redirect, request, session, url_for
 from globus_compute_sdk import Executor as GlobusComputeExecutor
 
-from utils.decorators import authenticated
-from utils.login_flow import initialize_globus_compute_client
-from utils.utils import get_safe_redirect, load_portal_client
-
 from . import app, database
+from .utils.decorators import authenticated
+from .utils.login_flow import initialize_globus_compute_client
+from .utils.utils import get_safe_redirect, load_portal_client
 
 # create and configure logger
 logging.basicConfig(

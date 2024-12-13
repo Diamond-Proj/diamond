@@ -1,11 +1,15 @@
 import logging
 import os
+
 from dotenv import dotenv_values, load_dotenv
 from flask import Flask
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .utils.database import Database
+
+# Load environment variables first, before any other imports or app creation
+load_dotenv(override=True)
 
 # create and configure logger
 logging.basicConfig(
@@ -16,9 +20,9 @@ logging.basicConfig(
 # create log object with current module name
 log = logging.getLogger(__name__)
 
-load_dotenv(override=True)
-
 HOST = os.environ.get("HOST")
+config = dotenv_values()
+print("config: ", config)
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
@@ -27,10 +31,13 @@ CORS(
     supports_credentials=True,
     resources={r"/*": {"origins": HOST}},
 )
-config = dotenv_values()
+
 app.config.from_mapping(config)
 # app.secret_key = os.environ.get('SECRET_KEY', 'DEFAULT_SECRET_KEY')
 
 with app.app_context():
     database = Database(app)
     database.ensure_tables_exist()
+
+# Import routes after app is created to avoid circular imports
+from . import routes
