@@ -9,22 +9,11 @@
 # testing
 /coverage
 
-# next.js
-/.next/
-/out/
-
 # production
 /build
 
-# certificates
-/certs
-
 # backend database
-/api/backend/data/
 *.db
-
-# letsencrypt
-/letsencrypt
 
 # misc
 .DS_Store
@@ -39,22 +28,10 @@ yarn-error.log*
 # env files
 .env*
 !.env.example
-**.conf
-!nginx/dev.conf
-!nginx/nginx.conf
-
-# traefik
-certs/**
-**.crt
-**.key
-
-# vercel
-.vercel
 
 # typescript
 *.tsbuildinfo
 next-env.d.ts
-.env*.local
 
 # Pycharm
 .idea

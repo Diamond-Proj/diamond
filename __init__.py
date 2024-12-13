@@ -1,8 +1,5 @@
-import json
 import logging
 import os
-
-import dotenv
 from dotenv import dotenv_values, load_dotenv
 from flask import Flask
 from flask_cors import CORS
@@ -19,11 +16,7 @@ logging.basicConfig(
 # create log object with current module name
 log = logging.getLogger(__name__)
 
-
 load_dotenv(override=True)
-
-# logging.info('env: ',dotenv.dotenv_values().keys())
-# logging.info("Loading configuration from .env file", os.environ['USER_SCOPES'])
 
 HOST = os.environ.get("HOST")
 

@@ -45,7 +45,7 @@ Diamond Admin Backend is a admin Flask server integrating SQLite for database ma
 
    - Start the Flask backend:
      ```bash
-     flask --app api.backend:app --debug run --port=5328
+     python3 -m flask --app index:app --debug run
      ```
 
 5. **Access the Application:**
