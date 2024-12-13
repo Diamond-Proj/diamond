@@ -19,13 +19,7 @@ Diamond Admin Backend is a admin Flask server integrating SQLite for database ma
    cd [repository-directory]
    ```
 
-2. **Install Node dependencies:**
-
-   ```bash
-   pnpm install
-   ```
-
-3. **Set up Python environment:**
+2. **Set up Python environment:**
 
    - Create a virtual environment:
      ```bash
@@ -43,18 +37,18 @@ Diamond Admin Backend is a admin Flask server integrating SQLite for database ma
      pip install -r requirements.txt
      ```
 
-4. **Environment Configuration:**
+3. **Environment Configuration:**
 
    - Copy the `.env.example` file to `.env` and adjust the configuration to match your local setup for both backend and frontend.
 
-5. **Running the Development Servers:**
+4. **Running the Development Servers:**
 
    - Start the Flask backend:
      ```bash
      pnpm run flask-dev
      ```
 
-6. **Access the Application:**
+5. **Access the Application:**
    - Open your web browser and navigate to `http://localhost:5328` to view the dashboard.
 
 ## Additional Information
