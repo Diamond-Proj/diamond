@@ -6,12 +6,11 @@ import requests
 from flask import flash, jsonify, make_response, redirect, request, session, url_for
 from globus_compute_sdk import Executor as GlobusComputeExecutor
 
-from api.backend.utils.decorators import authenticated
-from api.backend.utils.login_flow import initialize_globus_compute_client
-from api.backend.utils.utils import get_safe_redirect, load_portal_client
+from utils.decorators import authenticated
+from utils.login_flow import initialize_globus_compute_client
+from utils.utils import get_safe_redirect, load_portal_client
 
 from . import app, database
-# from api.backend import app, database
 
 # create and configure logger
 logging.basicConfig(
@@ -23,7 +22,6 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 HOST = os.environ.get("HOST")
-print("HOST: ", HOST)
 
 @app.route("/", methods=["GET"])
 def home():
@@ -31,11 +29,15 @@ def home():
     log.info(f"Home route redirecting to {HOST}/sign-in")
     return redirect(HOST + "/sign-in")
 
-
 @app.route("/api/healthcheck", methods=["GET"])
 def healthcheck():
     """Health check endpoint."""
-    return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()})
+    log.info("Health check route")
+    return jsonify({
+        "status": "healthy",
+        "timestamp": datetime.utcnow().isoformat()
+    }), 200
+
 
 
 @app.route("/api/signup", methods=["GET"])
@@ -449,4 +451,5 @@ def loadprofile():
 
 
 if __name__ == "__main__":
-    app.run(port=5328)
+    # Run command: python3 -m flask --app index:app --debug run
+    app.run()

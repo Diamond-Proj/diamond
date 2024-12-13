@@ -5,8 +5,8 @@ from functools import wraps
 from flask import jsonify, redirect, request, session, url_for
 from werkzeug.datastructures import ImmutableMultiDict
 
-from api.backend.utils.errors import UnauthorizedError
-from api.backend.utils.utils import get_portal_tokens, load_portal_client
+from utils.errors import UnauthorizedError
+from utils.utils import get_portal_tokens, load_portal_client
 
 # create and configure logger
 logging.basicConfig(
