@@ -23,21 +23,22 @@ log = logging.getLogger(__name__)
 
 HOST = os.environ.get("HOST")
 
+
 @app.route("/", methods=["GET"])
 def home():
     """Home route."""
     log.info(f"Home route redirecting to {HOST}/sign-in")
     return redirect(HOST + "/sign-in")
 
+
 @app.route("/api/healthcheck", methods=["GET"])
 def healthcheck():
     """Health check endpoint."""
     log.info("Health check route")
-    return jsonify({
-        "status": "healthy",
-        "timestamp": datetime.utcnow().isoformat()
-    }), 200
-
+    return (
+        jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()}),
+        200,
+    )
 
 
 @app.route("/api/signup", methods=["GET"])
@@ -85,11 +86,12 @@ def diamond_list_active_endpoints():
 def container_builder_wrapper(base_image, location, name):
     import os
     import textwrap
+
     load_apptainer = "module load tacc-apptainer"
     load_apptainer = textwrap.dedent(load_apptainer.strip())
     command = f"apptainer pull {location}/{name} {base_image}"
     command = textwrap.dedent(command.strip())
-    os.system(f"({load_apptainer}) 2>&1 | tee /work/09912/haotianxie/frontera/log.txt") 
+    os.system(f"({load_apptainer}) 2>&1 | tee /work/09912/haotianxie/frontera/log.txt")
     os.system(f"({command}) 2>&1 | tee /work/09912/haotianxie/frontera/log.txt")
     return
 
@@ -110,8 +112,12 @@ def diamond_endpoint_register_container():
     logging.info(function_id)
     logging.info(f"endpoint: {endpoint_id}")
 
-    logging.info(f"{name}\n{base_image}\n{description}\n{location}".format(name, base_image, description, location))
-    
+    logging.info(
+        f"{name}\n{base_image}\n{description}\n{location}".format(
+            name, base_image, description, location
+        )
+    )
+
     container_task_id = globus_compute_client.run(
         base_image=base_image,
         location=location,
@@ -166,6 +172,7 @@ def diamond_delete_container():
 def task_wrapper(task_command, log_path, container_path):
     import os
     import textwrap
+
     if not container_path:
         command = textwrap.dedent(task_command.strip())
         os.system(f"({command}) 2>&1 | tee {log_path}")
@@ -224,7 +231,7 @@ def diamond_get_task_status():
         status = global_compute_client.get_task(task_id)
         logging.info(f"111111")
         tasks_data[task_id] = status
-        
+
     logging.info(f"task status is {tasks_data}")
     return jsonify(tasks_data)
 

@@ -2,6 +2,7 @@
 
 import logging
 import os
+import pathlib
 import sqlite3
 
 from flask import g
@@ -22,6 +23,7 @@ class Database:
     def __init__(self, app):
         """Constructor."""
         self.app = app
+        self.ensure_db_file_exists()
 
         @app.teardown_appcontext
         def close_connection(exception):
@@ -31,42 +33,52 @@ class Database:
             if db is not None:
                 db.close()
 
+    def ensure_db_file_exists(self):
+        """Create database file if it doesn't exist."""
+        db_path = pathlib.Path(os.environ["DATABASE"])
+        if not db_path.exists():
+            log.info(f"Creating new database file at {db_path}")
+            # Create parent directories if they don't exist
+            db_path.parent.mkdir(parents=True, exist_ok=True)
+            # Create an empty file
+            db_path.touch()
+
     def ensure_tables_exist(self):
         """Ensure all required tables are created."""
         db = self.get_db()
         db.execute(
             """
-            CREATE TABLE IF NOT EXISTS profile (
-                    identity_id VARCHAR(255) PRIMARY KEY,
-                    name VARCHAR(255),
-                    email VARCHAR(255),
-                    institution TEXT
-			)
-			"""
+					CREATE TABLE IF NOT EXISTS profile (
+									identity_id VARCHAR(255) PRIMARY KEY,
+									name VARCHAR(255),
+									email VARCHAR(255),
+									institution TEXT
+		)
+		"""
         )
         db.execute(
             """
-            CREATE TABLE IF NOT EXISTS task (
-                task_id TEXT PRIMARY KEY,
-                identity_id VARCHAR(255),
-                task_status TEXT,
-                task_create_time TIMESTAMP,
-                FOREIGN KEY (identity_id) REFERENCES profile(identity_id)
-            )
-            """
+					CREATE TABLE IF NOT EXISTS task (
+							task_id TEXT PRIMARY KEY,
+							identity_id VARCHAR(255),
+							task_status TEXT,
+							task_create_time TIMESTAMP,
+							FOREIGN KEY (identity_id) REFERENCES profile(identity_id)
+					)
+					"""
         )
         db.execute(
             """
-            CREATE TABLE IF NOT EXISTS container (
-                container_task_id TEXT PRIMARY KEY,
-                identity_id VARCHAR(255),
-                base_image TEXT,
-                name TEXT,
-                location TEXT,
-                description TEXT,
-                FOREIGN KEY (identity_id) REFERENCES profile(identity_id)
-            )
-            """
+					CREATE TABLE IF NOT EXISTS container (
+							container_task_id TEXT PRIMARY KEY,
+							identity_id VARCHAR(255),
+							base_image TEXT,
+							name TEXT,
+							location TEXT,
+							description TEXT,
+							FOREIGN KEY (identity_id) REFERENCES profile(identity_id)
+					)
+					"""
         )
         db.commit()
 
@@ -107,9 +119,9 @@ class Database:
 
         db.execute(
             """INSERT INTO profile (identity_id, name, email, institution)
-            VALUES (?, ?, ?, ?)
-            ON CONFLICT(identity_id) DO UPDATE SET
-            name = excluded.name, email = excluded.email, institution = excluded.institution""",
+					VALUES (?, ?, ?, ?)
+					ON CONFLICT(identity_id) DO UPDATE SET
+					name = excluded.name, email = excluded.email, institution = excluded.institution""",
             (identity_id, name, email, institution),
         )
         db.commit()
@@ -119,12 +131,14 @@ class Database:
         log.info(f"Loading profile: {identity_id}")
         return self.query_db(
             """select name, email, institution from profile
-														 where identity_id = ?""",
+														where identity_id = ?""",
             [identity_id],
             one=True,
         )
-    
-    def save_task(self, task_id = None, identity_id=None, task_status=None, task_create_time=None):
+
+    def save_task(
+        self, task_id=None, identity_id=None, task_status=None, task_create_time=None
+    ):
         """Persist task information."""
         log.info(f"Saving task: {task_id}, {identity_id}")
         db = self.get_db()
@@ -132,11 +146,13 @@ class Database:
         identity_id = str(identity_id) if identity_id is not None else None
         task_id = str(task_id) if task_id is not None else None
         task_status = str(task_status) if task_status is not None else None
-        task_create_time = str(task_create_time) if task_create_time is not None else None
+        task_create_time = (
+            str(task_create_time) if task_create_time is not None else None
+        )
 
         db.execute(
             """INSERT INTO task (identity_id, task_id, task_status, task_create_time)
-            VALUES (?, ?, ?, ?)""",
+					VALUES (?, ?, ?, ?)""",
             (identity_id, task_id, task_status, task_create_time),
         )
         db.commit()
@@ -146,8 +162,8 @@ class Database:
         log.info(f"Loading task data for identity_id: {identity_id}")
         return self.query_db(
             """SELECT task_id, task_status, task_create_time FROM task
-            WHERE identity_id = ?""",
-            [identity_id]
+					WHERE identity_id = ?""",
+            [identity_id],
         )
 
     def delete_task(self, task_id):
@@ -156,17 +172,16 @@ class Database:
         db = self.get_db()
         db.execute(
             """DELETE FROM task
-            WHERE task_id = ?""",
-            [task_id]
+					WHERE task_id = ?""",
+            [task_id],
         )
         db.commit()
 
-
     def save_container(
         self,
-        container_task_id = None,
+        container_task_id=None,
         identity_id=None,
-        base_image = None,
+        base_image=None,
         name=None,
         location=None,
         description=None,
@@ -176,7 +191,9 @@ class Database:
         db = self.get_db()
 
         identity_id = str(identity_id) if identity_id is not None else None
-        container_task_id = str(container_task_id) if container_task_id is not None else None
+        container_task_id = (
+            str(container_task_id) if container_task_id is not None else None
+        )
         base_image = str(base_image) if base_image is not None else None
         name = str(name) if name is not None else None
         location = str(location) if location is not None else None
@@ -184,7 +201,7 @@ class Database:
 
         db.execute(
             """INSERT INTO container (identity_id, container_task_id, base_image, name, location, description)
-            VALUES (?, ?, ?, ?, ?, ?)""",
+					VALUES (?, ?, ?, ?, ?, ?)""",
             (identity_id, container_task_id, base_image, name, location, description),
         )
         db.commit()
@@ -194,8 +211,8 @@ class Database:
         log.info(f"Loading container data for identity_id: {identity_id}")
         return self.query_db(
             """SELECT container_task_id, base_image, name, location, description FROM container
-            WHERE identity_id = ?""",
-            [identity_id]
+					WHERE identity_id = ?""",
+            [identity_id],
         )
 
     def delete_container(self, container_task_id):
@@ -204,7 +221,7 @@ class Database:
         db = self.get_db()
         db.execute(
             """DELETE FROM container
-            WHERE container_task_id = ?""",
-            [container_task_id]
+					WHERE container_task_id = ?""",
+            [container_task_id],
         )
         db.commit()

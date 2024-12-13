@@ -29,11 +29,11 @@ def authenticated(fn):
         # log.info(f"Session: {session}")
         tokens = request.cookies.get("tokens")
         # Handle the '/is_authenticated' endpoint
-        if request.path.endswith('/is_authenticated'):
+        if request.path.endswith("/is_authenticated"):
             return handle_is_authenticated(tokens)
 
         # Check if the user is trying to log out
-        if request.path.endswith('/api/logout'):
+        if request.path.endswith("/api/logout"):
             if session.get("tokens"):
                 log.info("User is authenticated, logging out")
                 return fn(*args, **kwargs)

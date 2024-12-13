@@ -48,4 +48,6 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
 
 def initialize_globus_compute_client() -> GlobusComputeClient:
     login_manager = initialize_compute_login_manager()
-    return GlobusComputeClient(login_manager=login_manager, code_serialization_strategy=CombinedCode())
+    return GlobusComputeClient(
+        login_manager=login_manager, code_serialization_strategy=CombinedCode()
+    )
