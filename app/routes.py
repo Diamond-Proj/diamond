@@ -21,14 +21,16 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 HOST = app.config.get("HOST")
+NEXT_URL = app.config.get("NEXT_URL")
 log.info(f"HOST in routes.py: {HOST}")
+log.info(f"NEXT_URL in routes.py: {NEXT_URL}")
 
 
 @app.route("/", methods=["GET"])
 def home():
     """Home route."""
-    log.info(f"Home route redirecting to {HOST}/sign-in")
-    return redirect(HOST + "/sign-in")
+    log.info(f"Home route redirecting to {NEXT_URL}/sign-in")
+    return redirect(NEXT_URL + "/sign-in")
 
 
 @app.route("/api/healthcheck", methods=["GET"])
