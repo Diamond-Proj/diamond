@@ -20,7 +20,8 @@ logging.basicConfig(
 # create log object with current module name
 log = logging.getLogger(__name__)
 
-HOST = os.environ.get("HOST")
+HOST = app.config.get("HOST")
+log.info(f"HOST in routes.py: {HOST}")
 
 
 @app.route("/", methods=["GET"])
@@ -336,6 +337,7 @@ def profile():
         # )
         # return render_template("profile.jinja2")
         # Redirect to localhost:3000/profile
+        log.info(f"Redirecting to {HOST}, profile exists in database")
         response = make_response(redirect(f"{HOST}"))
         response.set_cookie("is_authenticated", "true")
         response.set_cookie("primary_username", session["primary_username"])
