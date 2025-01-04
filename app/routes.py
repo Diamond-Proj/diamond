@@ -26,7 +26,7 @@ log.info(f"HOST in routes.py: {HOST}")
 log.info(f"NEXT_URL in routes.py: {NEXT_URL}")
 
 
-@app.route("/", methods=["GET"])
+@app.route("/api/home", methods=["GET"])
 def home():
     """Home route."""
     log.info(f"Home route redirecting to {NEXT_URL}/sign-in")
@@ -339,8 +339,8 @@ def profile():
         # )
         # return render_template("profile.jinja2")
         # Redirect to localhost:3000/profile
-        log.info(f"Redirecting to {HOST}, profile exists in database")
-        response = make_response(redirect(f"{HOST}"))
+        log.info(f"Redirecting to {HOST}/home, profile exists in database")
+        response = make_response(redirect(f"{HOST}/home"))
         response.set_cookie("is_authenticated", "true")
         response.set_cookie("primary_username", session["primary_username"])
         response.set_cookie("primary_identity", session["primary_identity"])
