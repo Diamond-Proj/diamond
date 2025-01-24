@@ -23,10 +23,12 @@ log = logging.getLogger(__name__)
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
 NEXT_URL = app.config.get("NEXT_URL")
+NODE_ENV = app.config.get("NODE_ENV")
 
 log.info(f"HOST in routes.py: {HOST}")
 log.info(f"AUTH_URL in routes.py: {AUTH_URL}")
 log.info(f"NEXT_URL in routes.py: {NEXT_URL}")
+log.info(f"NODE_ENV in routes.py: {NODE_ENV}")
 
 
 @app.route("/api/home", methods=["GET"])
@@ -345,7 +347,9 @@ def profile():
         # return render_template("profile.jinja2")
         # Redirect to localhost:3000/profile
         log.info(f"Redirecting to {HOST}/api/home, profile exists in database")
-        response = make_response(redirect(f"{HOST}/api/home"))
+        response = make_response(
+            redirect(f"{HOST}/home" if NODE_ENV == "production" else f"{HOST}/api/home")
+        )
         response.set_cookie("is_authenticated", "true")
         response.set_cookie("primary_username", session["primary_username"])
         response.set_cookie("primary_identity", session["primary_identity"])
@@ -388,9 +392,6 @@ def authcallback():
         )
         return redirect(url_for("home"))
 
-    # Get the origin URL from query params or use HOST as fallback
-    origin_url = request.args.get("origin", HOST)
-
     # Set up our Globus Auth/OAuth2 state
     # Use the constructed redirect URI for Globus Auth
     redirect_uri = (
@@ -409,11 +410,14 @@ def authcallback():
     # If there's no "code" query string parameter, we're in this route
     # starting a Globus Auth login flow.
     if "code" not in request.args:
+        # Get the origin URL when starting the flow
+        origin_url = request.args.get("origin", HOST)
+
         additional_authorize_params = (
             {"signup": 1} if request.args.get("signup") else {}
         )
-        # Pass through the origin URL
-        additional_authorize_params["origin"] = origin_url
+        # Store the origin URL in the state parameter which Globus will return to us
+        additional_authorize_params["state"] = origin_url
 
         auth_uri = client.oauth2_get_authorize_url(
             query_params=additional_authorize_params
@@ -422,7 +426,9 @@ def authcallback():
         return redirect(auth_uri)
     else:
         # If we do have a "code" param, we're coming back from Globus Auth
-        # and can start the process of exchanging an auth code for a token.
+        # Get the origin URL from the state parameter
+        origin_url = request.args.get("state", HOST)
+
         code = request.args.get("code")
         tokens = client.oauth2_exchange_code_for_tokens(code)
 
