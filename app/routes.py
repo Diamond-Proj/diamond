@@ -21,9 +21,18 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 HOST = app.config.get("HOST")
+AUTH_URL = app.config.get("AUTH_URL")
 NEXT_URL = app.config.get("NEXT_URL")
+
 log.info(f"HOST in routes.py: {HOST}")
+log.info(f"AUTH_URL in routes.py: {AUTH_URL}")
 log.info(f"NEXT_URL in routes.py: {NEXT_URL}")
+
+# Construct the redirect URI from AUTH_URL
+GLOBUS_REDIRECT_URI = (
+    f"{AUTH_URL}/authcallback" if AUTH_URL else url_for("authcallback", _external=True)
+)
+log.info(f"GLOBUS_REDIRECT_URI: {GLOBUS_REDIRECT_URI}")
 
 
 @app.route("/api/home", methods=["GET"])
@@ -46,13 +55,15 @@ def healthcheck():
 @app.route("/api/signup", methods=["GET"])
 def signup():
     """Send the user to Globus Auth with signup=1."""
-    return redirect(url_for("authcallback", signup=1))
+    origin_url = request.headers.get("Origin", HOST)
+    return redirect(url_for("authcallback", signup=1, origin=origin_url))
 
 
 @app.route("/api/login", methods=["GET"])
 def login():
     """Send the user to Globus Auth."""
-    return redirect(url_for("authcallback"))
+    origin_url = request.headers.get("Origin", HOST)
+    return redirect(url_for("authcallback", origin=origin_url))
 
 
 @app.route(
@@ -383,8 +394,12 @@ def authcallback():
         )
         return redirect(url_for("home"))
 
+    # Get the origin URL from query params or use HOST as fallback
+    origin_url = request.args.get("origin", HOST)
+
     # Set up our Globus Auth/OAuth2 state
-    redirect_uri = url_for("authcallback", _external=True)
+    # Use the constructed redirect URI for Globus Auth
+    redirect_uri = GLOBUS_REDIRECT_URI
 
     client = load_portal_client()
     client.oauth2_start_flow(
@@ -399,6 +414,8 @@ def authcallback():
         additional_authorize_params = (
             {"signup": 1} if request.args.get("signup") else {}
         )
+        # Add origin to state parameter to preserve it through the auth flow
+        additional_authorize_params["state"] = origin_url
 
         auth_uri = client.oauth2_get_authorize_url(
             query_params=additional_authorize_params
@@ -430,8 +447,26 @@ def authcallback():
             session["name"] = name
             session["email"] = email
             session["institution"] = institution
-            log.info("profile found redirecting to profile... GET")
-            return redirect(url_for("profile"))
+
+            # Create response with redirect to the original preview/prod frontend
+            response = make_response(redirect(f"{origin_url}/profile"))
+
+            # Set cookies that will be needed by the frontend
+            response.set_cookie("is_authenticated", "true", domain=origin_url)
+            response.set_cookie(
+                "primary_username", session["primary_username"], domain=origin_url
+            )
+            response.set_cookie(
+                "primary_identity", session["primary_identity"], domain=origin_url
+            )
+            response.set_cookie("name", session["name"], domain=origin_url)
+            response.set_cookie("email", session["email"], domain=origin_url)
+            response.set_cookie(
+                "institution", session["institution"], domain=origin_url
+            )
+            response.set_cookie("tokens", str(session["tokens"]), domain=origin_url)
+
+            return response
         else:
             log.info("profile not found, creating...")
 
