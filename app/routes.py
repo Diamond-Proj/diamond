@@ -428,6 +428,8 @@ def authcallback():
         # If we do have a "code" param, we're coming back from Globus Auth
         # Get the origin URL from the state parameter
         origin_url = request.args.get("state", HOST)
+        if not origin_url.endswith("/api"):
+            origin_url = f"{origin_url}/api"
 
         code = request.args.get("code")
         tokens = client.oauth2_exchange_code_for_tokens(code)
