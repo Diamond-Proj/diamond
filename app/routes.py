@@ -412,8 +412,8 @@ def authcallback():
         additional_authorize_params = (
             {"signup": 1} if request.args.get("signup") else {}
         )
-        # Add origin to state parameter to preserve it through the auth flow
-        additional_authorize_params["state"] = origin_url
+        # Pass through the origin URL
+        additional_authorize_params["origin"] = origin_url
 
         auth_uri = client.oauth2_get_authorize_url(
             query_params=additional_authorize_params
@@ -446,6 +446,7 @@ def authcallback():
             session["email"] = email
             session["institution"] = institution
 
+            log.info(f"Profile found, redirecting to {origin_url}/profile")
             # Create response with redirect to the original preview/prod frontend
             response = make_response(redirect(f"{origin_url}/profile"))
 
