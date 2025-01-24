@@ -28,12 +28,6 @@ log.info(f"HOST in routes.py: {HOST}")
 log.info(f"AUTH_URL in routes.py: {AUTH_URL}")
 log.info(f"NEXT_URL in routes.py: {NEXT_URL}")
 
-# Construct the redirect URI from AUTH_URL
-GLOBUS_REDIRECT_URI = (
-    f"{AUTH_URL}/authcallback" if AUTH_URL else url_for("authcallback", _external=True)
-)
-log.info(f"GLOBUS_REDIRECT_URI: {GLOBUS_REDIRECT_URI}")
-
 
 @app.route("/api/home", methods=["GET"])
 def home():
@@ -399,7 +393,11 @@ def authcallback():
 
     # Set up our Globus Auth/OAuth2 state
     # Use the constructed redirect URI for Globus Auth
-    redirect_uri = GLOBUS_REDIRECT_URI
+    redirect_uri = (
+        f"{AUTH_URL}/authcallback"
+        if AUTH_URL
+        else url_for("authcallback", _external=True)
+    )
 
     client = load_portal_client()
     client.oauth2_start_flow(
