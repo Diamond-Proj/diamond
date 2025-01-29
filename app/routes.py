@@ -23,9 +23,14 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 HOST = app.config.get("HOST")
+AUTH_URL = app.config.get("AUTH_URL")
 NEXT_URL = app.config.get("NEXT_URL")
+NODE_ENV = app.config.get("NODE_ENV")
+
 log.info(f"HOST in routes.py: {HOST}")
+log.info(f"AUTH_URL in routes.py: {AUTH_URL}")
 log.info(f"NEXT_URL in routes.py: {NEXT_URL}")
+log.info(f"NODE_ENV in routes.py: {NODE_ENV}")
 
 
 @app.route("/api/home", methods=["GET"])
@@ -48,13 +53,15 @@ def healthcheck():
 @app.route("/api/signup", methods=["GET"])
 def signup():
     """Send the user to Globus Auth with signup=1."""
-    return redirect(url_for("authcallback", signup=1))
+    origin_url = request.headers.get("Origin", HOST)
+    return redirect(url_for("authcallback", signup=1, origin=origin_url))
 
 
 @app.route("/api/login", methods=["GET"])
 def login():
     """Send the user to Globus Auth."""
-    return redirect(url_for("authcallback"))
+    origin_url = request.headers.get("Origin", HOST)
+    return redirect(url_for("authcallback", origin=origin_url))
 
 
 @app.route("/api/is_authenticated", methods=["GET"])
@@ -151,7 +158,9 @@ def profile():
 
         # Redirect to localhost:3000/profile
         log.info(f"Redirecting to {HOST}/api/home, profile exists in database")
-        response = make_response(redirect(f"{HOST}/api/home"))
+        response = make_response(
+            redirect(f"{HOST}/home" if NODE_ENV == "production" else f"{HOST}/api/home")
+        )
         response.set_cookie("is_authenticated", "true")
         response.set_cookie("primary_username", session["primary_username"])
         response.set_cookie("primary_identity", session["primary_identity"])
@@ -195,7 +204,12 @@ def authcallback():
         return redirect(url_for("home"))
 
     # Set up our Globus Auth/OAuth2 state
-    redirect_uri = url_for("authcallback", _external=True)
+    # Use the constructed redirect URI for Globus Auth
+    redirect_uri = (
+        f"{AUTH_URL}/authcallback"
+        if AUTH_URL
+        else url_for("authcallback", _external=True)
+    )
 
     client = load_portal_client()
     client.oauth2_start_flow(
@@ -207,9 +221,14 @@ def authcallback():
     # If there's no "code" query string parameter, we're in this route
     # starting a Globus Auth login flow.
     if "code" not in request.args:
+        # Get the origin URL when starting the flow
+        origin_url = request.args.get("origin", HOST)
+
         additional_authorize_params = (
             {"signup": 1} if request.args.get("signup") else {}
         )
+        # Store the origin URL in the state parameter which Globus will return to us
+        additional_authorize_params["state"] = origin_url
 
         auth_uri = client.oauth2_get_authorize_url(
             query_params=additional_authorize_params
@@ -218,7 +237,11 @@ def authcallback():
         return redirect(auth_uri)
     else:
         # If we do have a "code" param, we're coming back from Globus Auth
-        # and can start the process of exchanging an auth code for a token.
+        # Get the origin URL from the state parameter
+        origin_url = request.args.get("state", HOST)
+        if not origin_url.endswith("/api"):
+            origin_url = f"{origin_url}/api"
+
         code = request.args.get("code")
         tokens = client.oauth2_exchange_code_for_tokens(code)
 
@@ -241,8 +264,27 @@ def authcallback():
             session["name"] = name
             session["email"] = email
             session["institution"] = institution
-            log.info("profile found redirecting to profile... GET")
-            return redirect(url_for("profile"))
+
+            log.info(f"Profile found, redirecting to {origin_url}/profile")
+            # Create response with redirect to the original preview/prod frontend
+            response = make_response(redirect(f"{origin_url}/profile"))
+
+            # Set cookies that will be needed by the frontend
+            response.set_cookie("is_authenticated", "true", domain=origin_url)
+            response.set_cookie(
+                "primary_username", session["primary_username"], domain=origin_url
+            )
+            response.set_cookie(
+                "primary_identity", session["primary_identity"], domain=origin_url
+            )
+            response.set_cookie("name", session["name"], domain=origin_url)
+            response.set_cookie("email", session["email"], domain=origin_url)
+            response.set_cookie(
+                "institution", session["institution"], domain=origin_url
+            )
+            response.set_cookie("tokens", str(session["tokens"]), domain=origin_url)
+
+            return response
         else:
             log.info("profile not found, creating...")
 
