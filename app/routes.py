@@ -606,7 +606,7 @@ def diamond_endpoint_submit_job():
 
     container_path = database.get_container_path_by_name(container)
 
-    globus_compute_client=initialize_globus_compute_client()
+    globus_compute_client = initialize_globus_compute_client()
     # globus_compute_executor = GlobusComputeExecutor(client=globus_compute_client, endpoint_id=endpoint_id)
 
     function_id = globus_compute_client.register_function(submit_task)
@@ -632,10 +632,6 @@ def diamond_endpoint_submit_job():
     #     task_name=task_name)
     
     # fu_stdout = fu.result().stdout
-    # logging.info("++++++++++++++++!!!???????????????????++++++++++")
-    # logging.info(fu_stdout)
-    # logging.info(fu.result().stderr)
-    # logging.info("++++++++++++++++!!!!!!!!!!!!!!!!+++++++++++++")
 
     database.save_task(
         task_id=task_id,
@@ -645,7 +641,7 @@ def diamond_endpoint_submit_job():
         task_create_time=datetime.now(),
         log_path=log_path,
     )
-    return jsonify("hello")
+    return jsonify({"message": "Task submitted successfully"})
 
 
 @app.route("/api/get_task_status", methods=["GET"])

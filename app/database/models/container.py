@@ -2,7 +2,7 @@
 Container model
 """
 
-from app.utils.database import db
+from app.database.db import db
 
 class Container(db.Model):
     container_task_id = db.Column(db.String)
