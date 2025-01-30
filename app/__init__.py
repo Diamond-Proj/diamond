@@ -35,7 +35,8 @@ CORS(
 app.config.from_mapping(config)
 
 basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:////' + os.path.join(basedir, app.config['DATABASE'])
+database_uri = os.environ["DATABASE_URI"]
+app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
 with app.app_context():
     database = Database(app)
     database.ensure_tables_exist()

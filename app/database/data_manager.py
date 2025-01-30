@@ -25,7 +25,7 @@ class Database:
         """Constructor."""
         self.app = app
         db.init_app(app)
-        self.ensure_db_file_exists()
+        # self.ensure_db_file_exists()
 
         @app.teardown_appcontext
         def close_connection(exception):
@@ -33,15 +33,15 @@ class Database:
                 db.session.rollback()
             db.session.remove()
 
-    def ensure_db_file_exists(self):
-        """Create database file if it doesn't exist."""
-        db_path = pathlib.Path(os.environ["DATABASE"])
-        if not db_path.exists():
-            log.info(f"Creating new database file at {db_path}")
-            # Create parent directories if they don't exist
-            db_path.parent.mkdir(parents=True, exist_ok=True)
-            # Create an empty file
-            db_path.touch()
+    # def ensure_db_file_exists(self):
+    #     """Create database file if it doesn't exist."""
+    #     db_path = pathlib.Path(os.environ["DATABASE"])
+    #     if not db_path.exists():
+    #         log.info(f"Creating new database file at {db_path}")
+    #         # Create parent directories if they don't exist
+    #         db_path.parent.mkdir(parents=True, exist_ok=True)
+    #         # Create an empty file
+    #         db_path.touch()
     
     def ensure_tables_exist(self):
         with self.app.app_context():
