@@ -24,6 +24,7 @@ class Database:
     def __init__(self, app: Flask):
         """Constructor."""
         self.app = app
+        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ["DATABASE_URI"]
         db.init_app(app)
         # self.ensure_db_file_exists()
 
