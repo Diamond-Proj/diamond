@@ -6,7 +6,7 @@ from flask import Flask
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from .utils.database import Database
+from .database.data_manager import Database
 
 # Load environment variables first, before any other imports or app creation
 load_dotenv(override=True)
@@ -33,8 +33,10 @@ CORS(
 )
 
 app.config.from_mapping(config)
-# app.secret_key = os.environ.get('SECRET_KEY', 'DEFAULT_SECRET_KEY')
 
+basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+database_uri = os.environ["DATABASE_URI"]
+app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
 with app.app_context():
     database = Database(app)
     database.ensure_tables_exist()
