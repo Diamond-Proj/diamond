@@ -21,6 +21,7 @@ logging.basicConfig(
 log = logging.getLogger(__name__)
 
 HOST = os.environ.get("HOST")
+print("HOST: ", HOST)
 config = dotenv_values()
 print("config: ", config)
 
@@ -36,7 +37,7 @@ app.config.from_mapping(config)
 
 basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 database_uri = os.environ["DATABASE_URI"]
-app.config['SQLALCHEMY_DATABASE_URI'] = database_uri
+app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
 with app.app_context():
     database = Database(app)
     database.ensure_tables_exist()
