@@ -1,10 +1,11 @@
 """Manage access to the database."""
 
 import logging
-import pathlib
 import os
-from flask_sqlalchemy import SQLAlchemy
+import pathlib
+
 from flask import Flask
+from flask_sqlalchemy import SQLAlchemy
 
 from app.database.db import db
 from app.database.models.container import Container
@@ -24,7 +25,6 @@ class Database:
     def __init__(self, app: Flask):
         """Constructor."""
         self.app = app
-        app.config['SQLALCHEMY_DATABASE_URI'] = os.environ["DATABASE_URI"]
         db.init_app(app)
         # self.ensure_db_file_exists()
 
@@ -43,7 +43,7 @@ class Database:
     #         db_path.parent.mkdir(parents=True, exist_ok=True)
     #         # Create an empty file
     #         db_path.touch()
-    
+
     def ensure_tables_exist(self):
         with self.app.app_context():
             db.create_all()
@@ -123,7 +123,9 @@ class Database:
 
     def update_container_status(self, container_task_id, container_status):
         log.info(f"Updating container status: {container_task_id}, {container_status}")
-        container = Container.query.filter_by(container_task_id=container_task_id).first()
+        container = Container.query.filter_by(
+            container_task_id=container_task_id
+        ).first()
         container.container_status = container_status
         db.session.commit()
 
@@ -139,4 +141,3 @@ class Database:
         log.info(f"Deleting container: {container_task_id}")
         Container.query.filter_by(container_task_id=container_task_id).delete()
         db.session.commit()
-        
