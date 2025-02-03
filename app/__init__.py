@@ -9,7 +9,7 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 from .database.data_manager import Database
 
 # Load environment variables first, before any other imports or app creation
-load_dotenv(override=True)
+load_dotenv()
 
 # create and configure logger
 logging.basicConfig(
