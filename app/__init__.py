@@ -22,7 +22,16 @@ log = logging.getLogger(__name__)
 
 HOST = os.environ.get("HOST")
 print("HOST: ", HOST)
-config = dotenv_values()
+# config = dotenv_values()
+is_production = os.environ.get("FLASK_ENV") == "production"
+
+# Load configuration based on environment
+if is_production:
+    config = dict(os.environ)  # Only OS environment variables in production
+else:
+    config = dotenv_values()  # Only .env file variables in local development
+
+
 print("config: ", config)
 
 app = Flask(__name__)
@@ -36,8 +45,8 @@ CORS(
 app.config.from_mapping(config)
 
 basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-database_uri = os.environ["DATABASE_URI"]
-app.config["SQLALCHEMY_DATABASE_URI"] = database_uri
+
+print("sql url: ", app.config["SQLALCHEMY_DATABASE_URI"])
 with app.app_context():
     database = Database(app)
     database.ensure_tables_exist()
