@@ -128,7 +128,7 @@ def profile():
         log.info(f"Profile: {profile}")
 
         if profile:
-            name, email, institution = profile
+            name, email, institution = profile.name, profile.email, profile.institution
 
             session["name"] = name
             session["email"] = email
@@ -259,7 +259,7 @@ def authcallback():
         profile = database.load_profile(session["primary_identity"])
 
         if profile:
-            name, email, institution = profile
+            name, email, institution = profile.name, profile.email, profile.institution
 
             session["name"] = name
             session["email"] = email
