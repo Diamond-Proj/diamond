@@ -216,7 +216,9 @@ def authcallback():
             }
 
             one_time_token = generate_one_time_token(auth_data)
-            return redirect(f"{source_backend}/auth/complete?token={one_time_token}")
+            return redirect(
+                f"{source_backend}/api/auth/complete?token={one_time_token}"
+            )
 
         # Direct auth (production) - set cookies and redirect
         session.update(
