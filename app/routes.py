@@ -13,7 +13,6 @@ from .utils.functions import (
     apptainer_def_file_creation,
     container_builder_wrapper_shell,
     get_accounts,
-    get_build_log,
     get_container_status,
     get_partitions,
     get_task_status,
