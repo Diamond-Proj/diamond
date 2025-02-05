@@ -23,15 +23,20 @@ class AuthClientManager:
         return cls._client
 
     @classmethod
-    def start_auth_flow(cls, redirect_uri, scopes, signup=False):
+    def start_auth_flow(cls, redirect_uri, scopes, signup=False, state=None):
         client = cls.get_client()
         client.oauth2_start_flow(
             redirect_uri, refresh_tokens=True, requested_scopes=scopes
         )
+        if state:
+            params = {"state": state}
+        else:
+            params = {}
 
-        auth_uri = client.oauth2_get_authorize_url(
-            query_params={"signup": "1"} if signup else {}
-        )
+        if signup:
+            params["signup"] = "1"
+
+        auth_uri = client.oauth2_get_authorize_url(query_params=params)
         return auth_uri
 
     @classmethod

@@ -64,7 +64,7 @@ def healthcheck():
     )
 
 
-def initiate_auth_flow(signup=False):
+def initiate_auth_flow(signup=False, state=None):
     """Common logic for login/signup."""
     # If we're not production, redirect to production auth
     if AUTH_URL:
@@ -73,11 +73,12 @@ def initiate_auth_flow(signup=False):
         return redirect(auth_url)
 
     # Production auth flow
-    auth_redirect_uri = url_for("authcallback", _external=True)
+    globus_auth_redirect_uri = url_for("authcallback", _external=True)
     auth_uri = AuthClientManager.start_auth_flow(
-        redirect_uri=auth_redirect_uri,
+        redirect_uri=globus_auth_redirect_uri,
         scopes=os.environ["USER_SCOPES"].split(),
         signup=signup,
+        state=state,
     )
     return redirect(auth_uri)
 
@@ -85,13 +86,15 @@ def initiate_auth_flow(signup=False):
 @app.route("/api/signup", methods=["GET"])
 def signup():
     """Send the user to Globus Auth with signup=1."""
-    return initiate_auth_flow(signup=True)
+    # This is the redirect_uri for the source backend
+    return initiate_auth_flow(signup=True, state=request.args.get("redirect_uri"))
 
 
 @app.route("/api/login", methods=["GET"])
 def login():
     """Send the user to Globus Auth."""
-    return initiate_auth_flow()
+    # This is the redirect_uri for the source backend, proxied here
+    return initiate_auth_flow(state=request.args.get("redirect_uri"))
 
 
 @app.route("/api/is_authenticated", methods=["GET"])
@@ -181,16 +184,15 @@ def authcallback():
         tokens = AuthClientManager.exchange_code(request.args.get("code"))
 
         id_token = tokens.decode_id_token()
-        # log.info(f"id_token: {id_token}")
         identity_id = id_token.get("sub")
 
-        # Check if this is a proxied auth request
-        redirect_uri = request.args.get("redirect_uri")
+        # Get source backend from state parameter
+        source_backend = request.args.get("state")
 
         if not identity_id:
-            if redirect_uri:
+            if source_backend:
                 log.error("No identity_id in token")
-                return redirect(redirect_uri)
+                return redirect(source_backend)
             log.error("No identity_id in token")
             return redirect(NEXT_URL + "/sign-in")
 
@@ -202,7 +204,7 @@ def authcallback():
             institution=id_token.get("organization"),
         )
 
-        if redirect_uri:
+        if source_backend:
             # Generate token for source backend
             auth_data = {
                 "tokens": tokens.by_resource_server,
@@ -214,10 +216,9 @@ def authcallback():
             }
 
             one_time_token = generate_one_time_token(auth_data)
-            return redirect(f"{redirect_uri}/auth/complete?token={one_time_token}")
+            return redirect(f"{source_backend}/auth/complete?token={one_time_token}")
 
         # Direct auth (production) - set cookies and redirect
-        # log.info(f"tokens: {tokens}")
         session.update(
             tokens=tokens.by_resource_server,
             is_authenticated=True,
