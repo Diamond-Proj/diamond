@@ -19,7 +19,7 @@ from .utils.functions import (
     log_reader_wrapper,
     submit_task,
 )
-from .utils.login_flow import initialize_globus_compute_client
+from .utils.login_flow import AuthClientManager, initialize_globus_compute_client
 from .utils.utils import (
     generate_one_time_token,
     get_safe_redirect,
@@ -66,29 +66,19 @@ def healthcheck():
 
 def initiate_auth_flow(signup=False):
     """Common logic for login/signup."""
-    redirect_uri = request.host_url.rstrip("/")  # Remove trailing slash if present
-    log.info(f"Auth request with redirect_uri: {redirect_uri}")
+    # If we're not production, redirect to production auth
+    if AUTH_URL:
+        redirect_uri = request.host_url.rstrip("/")  # Current backend URL
+        auth_url = f"{AUTH_URL}/api/{'signup' if signup else 'login'}?redirect_uri={redirect_uri}"
+        return redirect(auth_url)
 
-    # Always use production backend's authcallback URL as redirect_uri
-    auth_redirect_uri = (
-        f"{AUTH_URL}/authcallback"
-        if AUTH_URL
-        else url_for("authcallback", _external=True)
+    # Production auth flow
+    auth_redirect_uri = url_for("authcallback", _external=True)
+    auth_uri = AuthClientManager.start_auth_flow(
+        redirect_uri=auth_redirect_uri,
+        scopes=os.environ["USER_SCOPES"].split(),
+        signup=signup,
     )
-
-    client = load_portal_client()
-    client.oauth2_start_flow(
-        auth_redirect_uri,
-        refresh_tokens=True,
-        requested_scopes=os.environ["USER_SCOPES"].split(),
-    )
-
-    # Store the source backend URL in state
-    params = {"state": redirect_uri}
-    if signup:
-        params["signup"] = "1"
-
-    auth_uri = client.oauth2_get_authorize_url(query_params=params)
     return redirect(auth_uri)
 
 
@@ -182,16 +172,13 @@ def profile():
 @app.route("/api/authcallback", methods=["GET"])
 def authcallback():
     """Handle the response from Globus Auth."""
-    # If there's an error, redirect to sign-in
     if "error" in request.args:
         error_msg = request.args.get("error_description", request.args["error"])
         log.error(f"Globus Auth error: {error_msg}")
         return redirect(NEXT_URL + "/sign-in")
 
     try:
-        # Exchange code for tokens first
-        client = load_portal_client()
-        tokens = client.oauth2_exchange_code_for_tokens(request.args.get("code"))
+        tokens = AuthClientManager.exchange_code(request.args.get("code"))
 
         id_token = tokens.decode_id_token()
         identity_id = id_token.get("primary_identity")
@@ -208,10 +195,10 @@ def authcallback():
             institution=id_token.get("organization"),
         )
 
-        # Now check state to determine where to redirect
-        source_backend = request.args.get("state")
-        if source_backend:
-            # If we have a source backend, generate token and redirect there
+        # Check if this is a proxied auth request
+        redirect_uri = request.args.get("redirect_uri")
+        if redirect_uri:
+            # Generate token for source backend
             auth_data = {
                 "tokens": tokens.by_resource_server,
                 "name": id_token.get("name"),
@@ -222,48 +209,46 @@ def authcallback():
             }
 
             one_time_token = generate_one_time_token(auth_data)
-            return redirect(
-                f"{source_backend}/api/auth/complete?token={one_time_token}"
-            )
-        else:
-            # If no source backend (production), set cookies directly
-            session.update(
-                tokens=tokens.by_resource_server,
-                is_authenticated=True,
-                name=id_token.get("name"),
-                email=id_token.get("email"),
-                institution=id_token.get("organization"),
-                primary_username=id_token.get("preferred_username"),
-                primary_identity=identity_id,
-            )
+            return redirect(f"{redirect_uri}/auth/complete?token={one_time_token}")
 
-            response = make_response(redirect(NEXT_URL + "/sign-in"))
+        # Direct auth (production) - set cookies and redirect
+        session.update(
+            tokens=tokens.by_resource_server,
+            is_authenticated=True,
+            name=id_token.get("name"),
+            email=id_token.get("email"),
+            institution=id_token.get("organization"),
+            primary_username=id_token.get("preferred_username"),
+            primary_identity=identity_id,
+        )
 
-            # Set cookie options
-            parsed_url = urlparse(request.host_url)
-            is_localhost = parsed_url.hostname == "localhost"
-            cookie_options = {
-                "secure": not is_localhost,
-                "samesite": "Lax",
-                "path": "/",
-                "domain": None if is_localhost else f".{parsed_url.hostname}",
-                "httponly": False,
-            }
+        response = make_response(redirect(NEXT_URL + "/sign-in"))
 
-            # Set cookies
-            response.set_cookie("is_authenticated", "true", **cookie_options)
-            response.set_cookie(
-                "primary_username", session["primary_username"], **cookie_options
-            )
-            response.set_cookie(
-                "primary_identity", session["primary_identity"], **cookie_options
-            )
-            response.set_cookie("name", session["name"], **cookie_options)
-            response.set_cookie("email", session["email"], **cookie_options)
-            response.set_cookie("institution", session["institution"], **cookie_options)
-            response.set_cookie("tokens", str(session["tokens"]), **cookie_options)
+        # Set cookie options
+        parsed_url = urlparse(request.host_url)
+        is_localhost = parsed_url.hostname == "localhost"
+        cookie_options = {
+            "secure": not is_localhost,
+            "samesite": "Lax",
+            "path": "/",
+            "domain": None if is_localhost else f".{parsed_url.hostname}",
+            "httponly": False,
+        }
 
-            return response
+        # Set cookies
+        response.set_cookie("is_authenticated", "true", **cookie_options)
+        response.set_cookie(
+            "primary_username", session["primary_username"], **cookie_options
+        )
+        response.set_cookie(
+            "primary_identity", session["primary_identity"], **cookie_options
+        )
+        response.set_cookie("name", session["name"], **cookie_options)
+        response.set_cookie("email", session["email"], **cookie_options)
+        response.set_cookie("institution", session["institution"], **cookie_options)
+        response.set_cookie("tokens", str(session["tokens"]), **cookie_options)
+
+        return response
 
     except Exception as e:
         log.error(f"Error in authcallback: {str(e)}")
