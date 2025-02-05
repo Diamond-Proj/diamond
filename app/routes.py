@@ -181,9 +181,16 @@ def authcallback():
         tokens = AuthClientManager.exchange_code(request.args.get("code"))
 
         id_token = tokens.decode_id_token()
-        identity_id = id_token.get("primary_identity")
+        # log.info(f"id_token: {id_token}")
+        identity_id = id_token.get("sub")
+
+        # Check if this is a proxied auth request
+        redirect_uri = request.args.get("redirect_uri")
 
         if not identity_id:
+            if redirect_uri:
+                log.error("No identity_id in token")
+                return redirect(redirect_uri)
             log.error("No identity_id in token")
             return redirect(NEXT_URL + "/sign-in")
 
@@ -195,8 +202,6 @@ def authcallback():
             institution=id_token.get("organization"),
         )
 
-        # Check if this is a proxied auth request
-        redirect_uri = request.args.get("redirect_uri")
         if redirect_uri:
             # Generate token for source backend
             auth_data = {
@@ -212,6 +217,7 @@ def authcallback():
             return redirect(f"{redirect_uri}/auth/complete?token={one_time_token}")
 
         # Direct auth (production) - set cookies and redirect
+        # log.info(f"tokens: {tokens}")
         session.update(
             tokens=tokens.by_resource_server,
             is_authenticated=True,
