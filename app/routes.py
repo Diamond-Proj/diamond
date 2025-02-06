@@ -187,7 +187,7 @@ def authcallback():
         identity_id = id_token.get("sub")
 
         # Get source backend from state parameter
-        source_backend = request.args.get("state")
+        source_backend = None if request.args.get("state") == "_default" else request.args.get("state")
 
         if not identity_id:
             if source_backend:
