@@ -1,13 +1,38 @@
+import json
 import os
+from datetime import datetime, timedelta
 from threading import Lock
 
 import globus_sdk
-from flask import request
+import jwt
+from flask import current_app, request
 
 try:
     from urllib.parse import urljoin, urlparse
 except ImportError:
     from urllib.parse import urljoin, urlparse
+
+
+def generate_one_time_token(data, expiry_minutes=5):
+    """Generate a JWT token that expires."""
+    payload = {
+        "data": data,
+        "exp": datetime.utcnow() + timedelta(minutes=expiry_minutes),
+    }
+    return jwt.encode(payload, current_app.config["SECRET_KEY"], algorithm="HS256")
+
+
+def validate_one_time_token(token):
+    """Validate and decode a JWT token."""
+    try:
+        payload = jwt.decode(
+            token, current_app.config["SECRET_KEY"], algorithms=["HS256"]
+        )
+        return payload["data"]
+    except jwt.ExpiredSignatureError:
+        raise ValueError("Token has expired")
+    except jwt.InvalidTokenError as e:
+        raise ValueError(f"Invalid token: {str(e)}")
 
 
 def load_portal_client():
