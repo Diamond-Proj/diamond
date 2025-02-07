@@ -24,9 +24,9 @@ def authenticated(fn):
     @wraps(fn)
     def decorated_function(*args, **kwargs):
         log.info(f"Checking authentication for route: {request.path}")
-        # log.info(f"Request headers: {request.headers}")
-        # log.info(f"Cookies: {request.cookies}")
-        # log.info(f"Session: {session}")
+        log.info(f"Request headers: {request.headers}")
+        log.info(f"Cookies: {request.cookies}")
+        log.info(f"Session: {session}")
         tokens = request.cookies.get("tokens")
         # Handle the '/is_authenticated' endpoint
         if request.path.endswith("/is_authenticated"):
