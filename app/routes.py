@@ -239,16 +239,29 @@ def authcallback():
         primary_hostname = urlparse(request.host_url).hostname
         is_localhost = primary_hostname == "localhost"
 
+        # For production, extract domain from NEXT_URL properly
         if is_production:
-            primary_hostname = NEXT_URL
+            next_url_parsed = urlparse(NEXT_URL)
+            primary_hostname = next_url_parsed.hostname
+
+        # Determine the cookie domain
+        cookie_domain = None if is_localhost else primary_hostname
+        if cookie_domain and not is_localhost and not cookie_domain.startswith("."):
+            cookie_domain = f".{cookie_domain}"
 
         cookie_options = {
             "secure": not is_localhost,
             "samesite": "Lax",
             "path": "/",
-            "domain": None if is_localhost else f".{primary_hostname}",
+            "domain": cookie_domain,
             "httponly": False,
+            # Add max age to ensure cookies persist
+            "max_age": 7 * 24 * 60 * 60,  # 7 days
         }
+
+        # Set cookies with debug logging
+        log.info(f"Setting cookies with options: {cookie_options}")
+        log.info(f"Cookie domain: {cookie_domain}")
 
         # Set cookies
         response.set_cookie("is_authenticated", "true", **cookie_options)
