@@ -20,8 +20,8 @@ logging.basicConfig(
 # create log object with current module name
 log = logging.getLogger(__name__)
 
-HOST = os.environ.get("HOST")
-print("HOST: ", HOST)
+basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+
 # config = dotenv_values()
 is_production = os.environ.get("FLASK_ENV") == "production"
 
@@ -36,17 +36,13 @@ print("config: ", config)
 
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+app.config.from_mapping(config)
 CORS(
     app,
     supports_credentials=True,
-    resources={r"/*": {"origins": HOST}},
+    resources={r"/*": {"origins": app.config.get("HOST")}},
 )
 
-app.config.from_mapping(config)
-
-basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
-
-print("sql url: ", app.config["SQLALCHEMY_DATABASE_URI"])
 with app.app_context():
     database = Database(app)
     database.ensure_tables_exist()
