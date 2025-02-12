@@ -540,8 +540,6 @@ def get_containers():
         else:
             container_status = fu_stdout
             database.update_container_status(container_task_id, container_status)
-        logging.info("***************************************")
-        logging.info(fu_stdout)
 
         containers_data[name] = {
             "container_task_id": container_task_id,
@@ -577,6 +575,8 @@ def diamond_endpoint_submit_job():
         num_of_nodes = 1
 
     container_path = database.get_container_path_by_name(container)
+    logging.info(f"container_path: {container_path}")
+    logging.info(f"full container: {container_path + '/' + container + '.sif'}")
 
     globus_compute_client = initialize_globus_compute_client()
     # globus_compute_executor = GlobusComputeExecutor(client=globus_compute_client, endpoint_id=endpoint_id)
@@ -613,7 +613,7 @@ def diamond_endpoint_submit_job():
         task_create_time=datetime.now(),
         log_path=log_path,
     )
-    return jsonify({"message": "Task submitted successfully"})
+    return jsonify({"task_id": task_id, "task_name": task_name, "message": "Task submitted successfully"})
 
 
 @app.route("/api/get_task_status", methods=["GET"])
