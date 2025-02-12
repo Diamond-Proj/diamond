@@ -95,9 +95,9 @@ cat << EOF > test.submit
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
 #SBATCH --partition={partition}
-#SBATCH --account=Deep-Learning-at-Sca
-                           
-apptainer run --nv {container} {task}
+#SBATCH --account={account}
+echo $PWD                       
+srun apptainer run {container} {task}
 
 EOF
 
