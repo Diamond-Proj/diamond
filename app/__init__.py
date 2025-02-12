@@ -20,9 +20,15 @@ logging.basicConfig(
 # create log object with current module name
 log = logging.getLogger(__name__)
 
-basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+NEXT_URL = os.environ.get("NEXT_URL", "http://localhost:3000")  # Frontend URL
+# Always allow localhost for development, and add production URL if different
+allowed_origins = ["http://localhost:3000"]
 
-# config = dotenv_values()
+if NEXT_URL != "http://localhost:3000":
+    allowed_origins.append(NEXT_URL)
+
+# print("Allowed Origins: ", allowed_origins)
+
 is_production = os.environ.get("FLASK_ENV") == "production"
 
 # Load configuration based on environment
@@ -31,17 +37,20 @@ if is_production:
 else:
     config = dotenv_values()  # Only .env file variables in local development
 
-
-print("config: ", config)
-
 app = Flask(__name__)
 app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
-app.config.from_mapping(config)
+
 CORS(
     app,
     supports_credentials=True,
-    resources={r"/*": {"origins": app.config.get("HOST")}},
+    resources={r"/*": {"origins": allowed_origins}},
 )
+
+app.config.from_mapping(config)
+
+basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
+
+# print("sql url: ", app.config["SQLALCHEMY_DATABASE_URI"])
 
 with app.app_context():
     database = Database(app)
