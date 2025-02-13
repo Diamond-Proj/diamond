@@ -544,7 +544,7 @@ def get_containers():
     containers = database.load_containers(identity_id=session["primary_identity"])
     containers_data = {}
     for container in containers:
-        logging.info(f"container: {container.container_task_id}")
+        logging.info(f"container from db: {container.container_task_id}")
         container_task_id = container.container_task_id
         name = container.name
 
@@ -586,24 +586,26 @@ def diamond_endpoint_submit_job():
     endpoint_id = request.json.get("endpoint")
     task_name = request.json.get("taskName")
     partition = request.json.get("partition")
+    account = request.json.get("account")
     container = request.json.get("container")
     log_path = request.json.get("log_path")
     task = request.json.get("task")
     num_of_nodes = request.json.get("num_of_nodes")
     if not num_of_nodes:
         num_of_nodes = 1
+    if task is None:
+        task = ''
 
     container_path = database.get_container_path_by_name(container)
-    logging.info(f"container_path: {container_path}")
-    logging.info(f"full container: {container_path + '/' + container + '.sif'}")
+    logging.info(f"Submit task container path: {container_path + '/' + container + '.sif'}")
 
     globus_compute_client = initialize_globus_compute_client()
     # globus_compute_executor = GlobusComputeExecutor(client=globus_compute_client, endpoint_id=endpoint_id)
 
     function_id = globus_compute_client.register_function(submit_task)
-
     task_id = globus_compute_client.run(
         partition=partition,
+        account=account,
         container=container_path + "/" + container + ".sif",
         task=task,
         log_path=log_path,
@@ -612,6 +614,14 @@ def diamond_endpoint_submit_job():
         endpoint_id=endpoint_id,
         function_id=function_id,
     )
+    # Wait for submit task to complete.
+    submit_task_status = globus_compute_client.get_task(task_id)
+    logging.info(f"submit_task_status: {submit_task_status}")
+    while submit_task_status["pending"]:
+        logging.info("submit_task_status", submit_task_status)
+        time.sleep(10)
+        submit_task_status = globus_compute_client.get_task(task_id)
+        continue
 
     # fu = globus_compute_executor.submit(
     #     submit_task,
