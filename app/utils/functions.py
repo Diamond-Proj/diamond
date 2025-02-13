@@ -98,7 +98,7 @@ cat << EOF > test1.submit
 #SBATCH --partition={partition}
 #SBATCH --account={account}
 echo $PWD                       
-srun apptainer run {container} {task}
+srun apptainer run --bind={log_path},{container_path} {container} {task}
 
 EOF
 

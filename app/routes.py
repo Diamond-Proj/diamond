@@ -607,6 +607,7 @@ def diamond_endpoint_submit_job():
         partition=partition,
         account=account,
         container=container_path + "/" + container + ".sif",
+        container_path=container_path,
         task=task,
         log_path=log_path,
         num_of_nodes=num_of_nodes,
