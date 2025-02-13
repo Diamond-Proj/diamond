@@ -83,15 +83,16 @@ def log_reader_wrapper(log_file_path):
     
 
 
-submit_task = ShellFunction("""
-cat << EOF > test.submit
+submit_task = ShellFunction(
+"""
+cat << EOF > test1.submit
 #!/bin/bash
 
 #SBATCH --job-name={task_name}
 #SBATCH --output={log_path}/{task_name}.stdout
 #SBATCH --error={log_path}/{task_name}.stderr
 #SBATCH --nodes={num_of_nodes}
-#SBATCH --time=01:00:00
+#SBATCH --time=00:10:00
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
 #SBATCH --partition={partition}
@@ -101,5 +102,6 @@ srun apptainer run {container} {task}
 
 EOF
 
-sbatch $PWD/test.submit
-""")
+sbatch $PWD/test1.submit
+"""
+)
