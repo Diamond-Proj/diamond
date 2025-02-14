@@ -361,6 +361,7 @@ def diamond_endpoint_image_builder():
     location = request.json.get("location")
     account = request.json.get("account")
     partitions = request.json.get("partition")
+    identity_id = request.cookies.get("primary_identity")
 
     logging.info(f"endpoint_id: {endpoint_id}")
     logging.info(f"container_name: {name}")
@@ -371,7 +372,7 @@ def diamond_endpoint_image_builder():
     logging.info(f"location: {location}")
     logging.info(f"account: {account}")
     logging.info(f"partitions: {partitions}")
-
+    logging.info(f"identity_id: {identity_id}")
     slurm_commands = f"""
 #SBATCH --time=00:10:00
 #SBATCH --ntasks-per-node=1
@@ -435,7 +436,7 @@ def diamond_endpoint_image_builder():
 
     database.save_container(
         container_task_id=container_task_id,
-        identity_id=session["primary_identity"],
+        identity_id=identity_id,
         name=name,
         base_image=base_image,
         location=location,
@@ -539,9 +540,10 @@ def get_build_log():
 @app.route("/api/get_containers", methods=["GET"])
 @authenticated
 def get_containers():
+    identity_id = request.cookies.get("primary_identity")
+    logging.info(f"Loading containers for identity_id: {identity_id}")
     globus_compute_client = initialize_globus_compute_client()
-
-    containers = database.load_containers(identity_id=session["primary_identity"])
+    containers = database.load_containers(identity_id=identity_id)
     containers_data = {}
     for container in containers:
         logging.info(f"container from db: {container.container_task_id}")
@@ -591,13 +593,16 @@ def diamond_endpoint_submit_job():
     log_path = request.json.get("log_path")
     task = request.json.get("task")
     num_of_nodes = request.json.get("num_of_nodes")
+    identity_id = request.cookies.get("primary_identity")
     if not num_of_nodes:
         num_of_nodes = 1
     if task is None:
-        task = ''
+        task = ""
 
     container_path = database.get_container_path_by_name(container)
-    logging.info(f"Submit task container path: {container_path + '/' + container + '.sif'}")
+    logging.info(
+        f"Submit task container path: {container_path + '/' + container + '.sif'}"
+    )
 
     globus_compute_client = initialize_globus_compute_client()
     # globus_compute_executor = GlobusComputeExecutor(client=globus_compute_client, endpoint_id=endpoint_id)
@@ -638,20 +643,27 @@ def diamond_endpoint_submit_job():
     database.save_task(
         task_id=task_id,
         task_name=task_name,
-        identity_id=session["primary_identity"],
+        identity_id=identity_id,
         task_status="submitted",
         task_create_time=datetime.now(),
         log_path=log_path,
     )
-    return jsonify({"task_id": task_id, "task_name": task_name, "message": "Task submitted successfully"})
+    return jsonify(
+        {
+            "task_id": task_id,
+            "task_name": task_name,
+            "message": "Task submitted successfully",
+        }
+    )
 
 
 @app.route("/api/get_task_status", methods=["GET"])
 @authenticated
 def diamond_get_task_status():
+    identity_id = request.cookies.get("primary_identity")
     global_compute_client = initialize_globus_compute_client()
 
-    tasks = database.load_tasks(identity_id=session["primary_identity"])
+    tasks = database.load_tasks(identity_id=identity_id)
 
     for task in tasks:
         task_id = task.task_id
@@ -682,7 +694,7 @@ def diamond_get_task_status():
         )
 
     # Reload the updated tasks from the database
-    updated_tasks = database.load_tasks(identity_id=session["primary_identity"])
+    updated_tasks = database.load_tasks(identity_id=identity_id)
 
     # Format tasks data for JSON response
     tasks_data = {
