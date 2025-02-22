@@ -1,5 +1,6 @@
-import logging
+import logger
 import os
+from datetime import datetime
 
 from dotenv import dotenv_values, load_dotenv
 from flask import Flask
@@ -8,17 +9,19 @@ from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .database.data_manager import Database
 
+
 # Load environment variables first, before any other imports or app creation
 load_dotenv()
 
-# create and configure logger
-logging.basicConfig(
-    level=logging.INFO,
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    format="%(asctime)-15s.%(msecs)03dZ %(levelname)-7s : %(name)s - %(message)s",
-)
-# create log object with current module name
-log = logging.getLogger(__name__)
+log_dir= os.environ.get("DIAMOND_BACKEND_LOG_PATH", "/tmp")
+log_name = os.environ.get("DIAMOND_BACKEND_LOG_NAME", "diamond-admin-backend")
+if not os.access(log_dir, os.W_OK):
+    logger = logger.Logger(name="diamond-admin-backend")
+    logger.warning(f"Directory {log_dir} is not writable. Only logging to console.")
+else:
+    log_path = f"{log_dir}/{log_name}_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.log"
+    logger = logger.Logger(name="diamond-admin-backend", path=log_path)
+    logger.info(f"Logging to {log_path}")
 
 NEXT_URL = os.environ.get("NEXT_URL", "http://localhost:3000")  # Frontend URL
 # Always allow localhost for development, and add production URL if different
