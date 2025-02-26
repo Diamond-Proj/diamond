@@ -1,4 +1,3 @@
-import json
 import os
 from datetime import datetime, timedelta
 from threading import Lock

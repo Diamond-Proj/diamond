@@ -1,5 +1,4 @@
 import json
-import logging
 
 import globus_sdk
 from flask import request, session
@@ -9,6 +8,7 @@ from globus_compute_sdk.sdk.login_manager.manager import ComputeScopeBuilder
 from globus_compute_sdk.serialize import CombinedCode
 from globus_sdk.scopes import AuthScopes
 
+from .. import logger
 from ..utils.utils import load_portal_client
 
 
@@ -54,7 +54,7 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
         tokens_value = json.loads(sanitized_tokens_cookie)
         # tokens_value = json.loads(tokens['value'].replace("\\054", ","))
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON from tokens cookie: {e}")
+        logger.error(f"Error decoding JSON from tokens cookie: {e}")
         raise
 
     openid_token = None
