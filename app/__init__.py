@@ -16,11 +16,11 @@ load_dotenv()
 log_dir= os.environ.get("DIAMOND_BACKEND_LOG_PATH", "/tmp")
 log_name = os.environ.get("DIAMOND_BACKEND_LOG_NAME", "diamond-admin-backend")
 if not os.access(log_dir, os.W_OK):
-    logger = logger.Logger(name="diamond-admin-backend")
+    logger = logger.Logger(name=log_name)
     logger.warning(f"Directory {log_dir} is not writable. Only logging to console.")
 else:
     log_path = f"{log_dir}/{log_name}_{datetime.now().strftime('%Y-%m-%d-%H-%M-%S')}.log"
-    logger = logger.Logger(name="diamond-admin-backend", path=log_path)
+    logger = logger.Logger(name=log_name, path=log_path)
     logger.info(f"Logging to {log_path}")
 
 NEXT_URL = os.environ.get("NEXT_URL", "http://localhost:3000")  # Frontend URL
