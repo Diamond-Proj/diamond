@@ -1,12 +1,15 @@
 import json
+import logging
+import urllib.parse  # Add this import for URL decoding
 from functools import wraps
 
 from flask import jsonify, redirect, request, session, url_for
 from werkzeug.datastructures import ImmutableMultiDict
 
+from .. import logger
 from ..utils.errors import UnauthorizedError
 from ..utils.utils import get_portal_tokens, load_portal_client
-from .. import logger
+
 
 def authenticated(fn):
     """Mark a route as requiring authentication."""
@@ -44,11 +47,23 @@ def authenticated(fn):
             logger.info("No tokens found in request cookies")
             return jsonify({"is_authenticated": False}), 401
         try:
-            tokens = json.loads(tokens)["value"]
-            logger.debug(f"Tokens in is_authenticated: {tokens} for route: {request.path}")
-            if not tokens:
-                logger.info("No tokens available")
+            # First URL-decode the cookie value
+            url_decoded = urllib.parse.unquote(tokens)
+
+            # Try to parse the tokens
+            tokens_data = json.loads(url_decoded)
+
+            # Check for valid tokens structure
+            # The format we're now storing is a direct map of resource_server -> token_data
+            if isinstance(tokens_data, dict) and tokens_data:
+                logger.debug(
+                    f"Successfully parsed tokens with keys: {list(tokens_data.keys())}"
+                )
+                return jsonify({"is_authenticated": True})
+            else:
+                logger.info("Invalid tokens structure")
                 return jsonify({"is_authenticated": False}), 401
+
         except json.JSONDecodeError as e:
             logger.error(f"Error decoding tokens: {e}")
             return jsonify({"is_authenticated": False}), 401
