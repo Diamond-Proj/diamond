@@ -10,6 +10,7 @@ from globus_compute_sdk.sdk.login_manager.manager import ComputeScopeBuilder
 from globus_compute_sdk.serialize import CombinedCode
 from globus_sdk.scopes import AuthScopes
 
+from .. import logger
 from ..utils.utils import load_portal_client
 
 
@@ -67,11 +68,7 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
 
         tokens_value = json.loads(sanitized_tokens_cookie)
     except json.JSONDecodeError as e:
-        logging.error(f"Error decoding JSON from tokens cookie: {e}")
-        logging.error(f"Raw token cookie (first 100 chars): {tokens_cookie[:100]}...")
-        logging.error(
-            f"URL-decoded cookie (first 100 chars): {url_decoded[:100] if 'url_decoded' in locals() else 'Not decoded yet'}..."
-        )
+        logger.error(f"Error decoding JSON from tokens cookie: {e}")
         raise
 
     # Log the structure that was successfully parsed

@@ -1,4 +1,3 @@
-import logging
 import os
 import time
 from datetime import datetime
@@ -7,7 +6,7 @@ from urllib.parse import urlparse
 from flask import flash, jsonify, make_response, redirect, request, session, url_for
 from globus_compute_sdk import Executor as GlobusComputeExecutor
 
-from . import app, database, is_production
+from . import app, database, is_production, logger
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
@@ -27,35 +26,27 @@ from .utils.utils import (
     validate_one_time_token,
 )
 
-# create and configure logger
-logging.basicConfig(
-    level=logging.INFO,
-    datefmt="%Y-%m-%dT%H:%M:%S",
-    format="%(asctime)-15s.%(msecs)03dZ %(levelname)-7s : %(name)s - %(message)s",
-)
-# create log object with current module name
-log = logging.getLogger(__name__)
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
 NEXT_URL = app.config.get("NEXT_URL")
 
-log.info(f"HOST in routes.py: {HOST}")
-log.info(f"AUTH_URL in routes.py: {AUTH_URL}")
-log.info(f"NEXT_URL in routes.py: {NEXT_URL}")
+logger.info(f"HOST in routes.py: {HOST}")
+logger.info(f"AUTH_URL in routes.py: {AUTH_URL}")
+logger.info(f"NEXT_URL in routes.py: {NEXT_URL}")
 
 
 @app.route("/api/home", methods=["GET"])
 def home():
     """Home route."""
-    log.info(f"Home route redirecting to {NEXT_URL}/sign-in")
+    logger.info(f"Home route redirecting to {NEXT_URL}/sign-in")
     return redirect(NEXT_URL + "/sign-in")
 
 
 @app.route("/api/healthcheck", methods=["GET"])
 def healthcheck():
     """Health check endpoint."""
-    log.info("Health check route")
+    logger.info("Health check route")
     return (
         jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()}),
         200,
@@ -133,7 +124,7 @@ def logout():
     response = make_response(redirect(url_for("home", _external=True)))
     response.delete_cookie("tokens")
 
-    log.info(f"Session after clearing: {session}")
+    logger.info(f"Session after clearing: {session}")
 
     redirect_uri = url_for("home", _external=True)
 
@@ -175,7 +166,7 @@ def authcallback():
     """Handle the response from Globus Auth."""
     if "error" in request.args:
         error_msg = request.args.get("error_description", request.args["error"])
-        log.error(f"Globus Auth error: {error_msg}")
+        logger.error(f"Globus Auth error: {error_msg}")
         return redirect(NEXT_URL + "/sign-in")
 
     try:
@@ -193,9 +184,9 @@ def authcallback():
 
         if not identity_id:
             if source_backend:
-                log.error("No identity_id in token")
+                logger.error("No identity_id in token")
                 return redirect(source_backend)
-            log.error("No identity_id in token")
+            logger.error("No identity_id in token")
             return redirect(NEXT_URL + "/sign-in")
 
         # Create/update profile
@@ -259,9 +250,9 @@ def authcallback():
             "max_age": 7 * 24 * 60 * 60,  # 7 days
         }
 
-        # Set cookies with debug logging
-        log.info(f"Setting cookies with options: {cookie_options}")
-        log.info(f"Cookie domain: {cookie_domain}")
+        # Set cookies with debug logger
+        logger.info(f"Setting cookies with options: {cookie_options}")
+        logger.info(f"Cookie domain: {cookie_domain}")
 
         # Set cookies
         response.set_cookie("is_authenticated", "true", **cookie_options)
@@ -279,14 +270,14 @@ def authcallback():
         return response
 
     except Exception as e:
-        log.error(f"Error in authcallback: {str(e)}")
+        logger.error(f"Error in authcallback: {str(e)}")
         return redirect(NEXT_URL + "/sign-in")
 
 
 @app.route("/api/loadprofile", methods=["GET"])
 def loadprofile():
     """Deprecated: Profile is now handled during auth flow."""
-    log.warning("Deprecated /api/loadprofile called")
+    logger.warning("Deprecated /api/loadprofile called")
     return redirect(NEXT_URL + "/profile")
 
 
@@ -305,7 +296,7 @@ def diamond_list_active_endpoints():
             active_endpoints.append(
                 {"endpoint_name": endpoint["name"], "endpoint_uuid": endpoint_uuid}
             )
-    logging.info(active_endpoints)
+    logger.info(active_endpoints)
     return active_endpoints
 
 
@@ -313,7 +304,7 @@ def diamond_list_active_endpoints():
 @authenticated
 def diamond_get_partitions():
     endpoint_id = request.json.get("endpoint")
-    logging.info(f"endpoint_id: {endpoint_id}")
+    logger.info(f"endpoint_id: {endpoint_id}")
     globus_compute_client = initialize_globus_compute_client()
     globus_compute_executer = GlobusComputeExecutor(
         client=globus_compute_client, endpoint_id=endpoint_id
@@ -324,7 +315,7 @@ def diamond_get_partitions():
     for partition in partition_list:
         if not partition:
             partition_list.remove(partition)
-    logging.info(f"partitions: {partition_list}")
+    logger.info(f"partitions: {partition_list}")
     return jsonify(partition_list)
 
 
@@ -332,7 +323,7 @@ def diamond_get_partitions():
 @authenticated
 def diamond_get_accounts():
     endpoint_id = request.json.get("endpoint")
-    logging.info(f"endpoint_id: {endpoint_id}")
+    logger.info(f"endpoint_id: {endpoint_id}")
     globus_compute_client = initialize_globus_compute_client()
     globus_compute_executer = GlobusComputeExecutor(
         client=globus_compute_client, endpoint_id=endpoint_id
@@ -343,7 +334,7 @@ def diamond_get_accounts():
     for account in account_list:
         if not account:
             account_list.remove(account)
-    logging.info(f"accounts: {account_list}")
+    logger.info(f"accounts: {account_list}")
     return jsonify(account_list)
 
 
@@ -363,16 +354,16 @@ def diamond_endpoint_image_builder():
     partitions = request.json.get("partition")
     identity_id = request.cookies.get("primary_identity")
 
-    logging.info(f"endpoint_id: {endpoint_id}")
-    logging.info(f"container_name: {name}")
-    logging.info(f"base_image: {base_image}")
-    logging.info(f"dependencies: {dependencies}")
-    logging.info(f"environment: {environment}")
-    logging.info(f"commands: {commands}")
-    logging.info(f"location: {location}")
-    logging.info(f"account: {account}")
-    logging.info(f"partitions: {partitions}")
-    logging.info(f"identity_id: {identity_id}")
+    logger.info(f"endpoint_id: {endpoint_id}")
+    logger.info(f"container_name: {name}")
+    logger.info(f"base_image: {base_image}")
+    logger.info(f"dependencies: {dependencies}")
+    logger.info(f"environment: {environment}")
+    logger.info(f"commands: {commands}")
+    logger.info(f"location: {location}")
+    logger.info(f"account: {account}")
+    logger.info(f"partitions: {partitions}")
+    logger.info(f"identity_id: {identity_id}")
     slurm_commands = f"""
 #SBATCH --time=00:10:00
 #SBATCH --ntasks-per-node=1
@@ -533,7 +524,7 @@ def get_build_log():
         )
 
     except Exception as e:
-        logging.error(f"Error getting build log: {str(e)}")
+        logger.error(f"Error getting build log: {str(e)}")
         return jsonify({"status": "error", "error": str(e)}), 500
 
 
@@ -541,12 +532,12 @@ def get_build_log():
 @authenticated
 def get_containers():
     identity_id = request.cookies.get("primary_identity")
-    logging.info(f"Loading containers for identity_id: {identity_id}")
+    logger.info(f"Loading containers for identity_id: {identity_id}")
     globus_compute_client = initialize_globus_compute_client()
     containers = database.load_containers(identity_id=identity_id)
     containers_data = {}
     for container in containers:
-        logging.info(f"container from db: {container.container_task_id}")
+        logger.info(f"container from db: {container.container_task_id}")
         container_task_id = container.container_task_id
         name = container.name
 
@@ -569,7 +560,7 @@ def get_containers():
             "location": container.location,
         }
 
-    logging.info(f"container status is {containers_data}")
+    logger.info(f"container status is {containers_data}")
     return jsonify(containers_data)
 
 
@@ -578,7 +569,7 @@ def get_containers():
 def diamond_delete_container():
     container_id = request.json.get("containerId")
     database.delete_container(container_id)
-    logging.info(f"container {container_id} deleted")
+    logger.info(f"container {container_id} deleted")
     return jsonify({"message": "Container deleted successfully"})
 
 
@@ -600,7 +591,7 @@ def diamond_endpoint_submit_job():
         task = ""
 
     container_path = database.get_container_path_by_name(container)
-    logging.info(
+    logger.info(
         f"Submit task container path: {container_path + '/' + container + '.sif'}"
     )
 
@@ -622,9 +613,9 @@ def diamond_endpoint_submit_job():
     )
     # Wait for submit task to complete.
     submit_task_status = globus_compute_client.get_task(task_id)
-    logging.info(f"submit_task_status: {submit_task_status}")
+    logger.info(f"submit_task_status: {submit_task_status}")
     while submit_task_status["pending"]:
-        logging.info("submit_task_status", submit_task_status)
+        logger.info("submit_task_status", submit_task_status)
         time.sleep(10)
         submit_task_status = globus_compute_client.get_task(task_id)
         continue
@@ -667,7 +658,7 @@ def diamond_get_task_status():
 
     for task in tasks:
         task_id = task.task_id
-        logging.info(f"Updating status for task ID: {task_id}")
+        logger.info(f"Updating status for task ID: {task_id}")
 
         current_task = global_compute_client.get_task(task_id)
 
@@ -681,8 +672,7 @@ def diamond_get_task_status():
             task.task_status = task.task_status
         else:
             task.task_status = fu_stdout
-        logging.info("++++++++++++++++++++++++++++++++++++++++++")
-        logging.info(fu_stdout)
+        logger.info(fu_stdout)
 
         database.save_task(
             task_id=task.task_id,
@@ -714,7 +704,7 @@ def diamond_get_task_status():
         for task in updated_tasks
     }
 
-    logging.info(f"Updated task status response: {tasks_data}")
+    logger.info(f"Updated task status response: {tasks_data}")
     return jsonify(tasks_data)
 
 
@@ -723,7 +713,7 @@ def diamond_get_task_status():
 def diamond_delete_task():
     task_id = request.json.get("taskId")
     database.delete_task(task_id)
-    logging.info(f"task {task_id} deleted")
+    logger.info(f"task {task_id} deleted")
     return jsonify({"message": "Task deleted successfully"})
 
 
@@ -732,7 +722,7 @@ def auth_complete():
     """Handle auth completion and set cookies."""
     token = request.args.get("token")
     if not token:
-        log.error("No token provided in auth completion")
+        logger.error("No token provided in auth completion")
         return redirect(NEXT_URL + "/sign-in")
 
     try:
@@ -780,7 +770,7 @@ def auth_complete():
         return response
 
     except Exception as e:
-        log.error(f"Error processing auth completion: {str(e)}")
+        logger.error(f"Error processing auth completion: {str(e)}")
         return redirect(NEXT_URL + "/sign-in")
 
 
