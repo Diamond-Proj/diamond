@@ -6,9 +6,10 @@ from functools import wraps
 from flask import jsonify, redirect, request, session, url_for
 from werkzeug.datastructures import ImmutableMultiDict
 
+from .. import logger
 from ..utils.errors import UnauthorizedError
 from ..utils.utils import get_portal_tokens, load_portal_client
-from .. import logger
+
 
 def authenticated(fn):
     """Mark a route as requiring authentication."""
@@ -55,12 +56,12 @@ def authenticated(fn):
             # Check for valid tokens structure
             # The format we're now storing is a direct map of resource_server -> token_data
             if isinstance(tokens_data, dict) and tokens_data:
-                log.debug(
+                logger.debug(
                     f"Successfully parsed tokens with keys: {list(tokens_data.keys())}"
                 )
                 return jsonify({"is_authenticated": True})
             else:
-                log.info("Invalid tokens structure")
+                logger.info("Invalid tokens structure")
                 return jsonify({"is_authenticated": False}), 401
 
         except json.JSONDecodeError as e:
