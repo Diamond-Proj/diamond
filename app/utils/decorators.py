@@ -1,5 +1,6 @@
 import json
 import logging
+import urllib.parse  # Add this import for URL decoding
 from functools import wraps
 
 from flask import jsonify, redirect, request, session, url_for
@@ -24,8 +25,8 @@ def authenticated(fn):
     @wraps(fn)
     def decorated_function(*args, **kwargs):
         log.info(f"Checking authentication for route: {request.path}")
-        # log.info(f"Request headers: {request.headers}")
-        # log.info(f"Cookies: {request.cookies}")
+        log.info(f"Request headers: {request.headers}")
+        log.info(f"Cookies: {request.cookies}")
         # log.info(f"Session: {session}")
         tokens = request.cookies.get("tokens")
         # Handle the '/is_authenticated' endpoint
@@ -54,13 +55,26 @@ def authenticated(fn):
             log.info("No tokens found in request cookies")
             return jsonify({"is_authenticated": False}), 401
         try:
-            tokens = json.loads(tokens)["value"]
-            log.debug(f"Tokens in is_authenticated: {tokens} for route: {request.path}")
-            if not tokens:
-                log.info("No tokens available")
+            # First URL-decode the cookie value
+            url_decoded = urllib.parse.unquote(tokens)
+
+            # Try to parse the tokens
+            tokens_data = json.loads(url_decoded)
+
+            # Check for valid tokens structure
+            # The format we're now storing is a direct map of resource_server -> token_data
+            if isinstance(tokens_data, dict) and tokens_data:
+                log.debug(
+                    f"Successfully parsed tokens with keys: {list(tokens_data.keys())}"
+                )
+                return jsonify({"is_authenticated": True})
+            else:
+                log.info("Invalid tokens structure")
                 return jsonify({"is_authenticated": False}), 401
+
         except json.JSONDecodeError as e:
             log.error(f"Error decoding tokens: {e}")
+            log.error(f"Tokens string (first 100 chars): {tokens[:100]}...")
             return jsonify({"is_authenticated": False}), 401
 
         return jsonify({"is_authenticated": True})

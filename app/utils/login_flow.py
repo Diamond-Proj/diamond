@@ -1,5 +1,6 @@
 import json
 import logging
+import urllib.parse  # Add this import for URL decoding
 
 import globus_sdk
 from flask import request, session
@@ -48,14 +49,36 @@ class AuthClientManager:
 def initialize_compute_login_manager() -> AuthorizerLoginManager:
     tokens_cookie = request.cookies.get("tokens")
 
+    if not tokens_cookie:
+        logging.error("No tokens cookie found in request")
+        raise ValueError("No authentication tokens found. Please log in again.")
+
     try:
-        # Sanitize the cookie data
-        sanitized_tokens_cookie = tokens_cookie.replace("'", '"').replace("\\054", ",")
+        # First URL-decode the cookie value
+        url_decoded = urllib.parse.unquote(tokens_cookie)
+
+        # Then sanitize and parse as JSON
+        sanitized_tokens_cookie = url_decoded.replace("'", '"').replace("\\054", ",")
+
+        # Log for debugging
+        logging.debug(
+            f"Sanitized tokens cookie (first 100 chars): {sanitized_tokens_cookie[:100]}..."
+        )
+
         tokens_value = json.loads(sanitized_tokens_cookie)
-        # tokens_value = json.loads(tokens['value'].replace("\\054", ","))
     except json.JSONDecodeError as e:
         logging.error(f"Error decoding JSON from tokens cookie: {e}")
+        logging.error(f"Raw token cookie (first 100 chars): {tokens_cookie[:100]}...")
+        logging.error(
+            f"URL-decoded cookie (first 100 chars): {url_decoded[:100] if 'url_decoded' in locals() else 'Not decoded yet'}..."
+        )
         raise
+
+    # Log the structure that was successfully parsed
+    if tokens_value:
+        logging.debug(
+            f"Successfully parsed tokens with keys: {list(tokens_value.keys())}"
+        )
 
     openid_token = None
     funcx_service_token = None
