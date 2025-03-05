@@ -274,6 +274,63 @@ def authcallback():
         return redirect(NEXT_URL + "/sign-in")
 
 
+@app.route("/api/auth/complete", methods=["GET"])
+def auth_complete():
+    """Handle auth completion and set cookies."""
+    token = request.args.get("token")
+    if not token:
+        logger.error("No token provided in auth completion")
+        return redirect(NEXT_URL + "/sign-in")
+
+    try:
+        # Decode and validate the token
+        auth_data = validate_one_time_token(token)
+
+        # Update session
+        session.update(
+            tokens=auth_data["tokens"],
+            is_authenticated=True,
+            name=auth_data["name"],
+            email=auth_data["email"],
+            institution=auth_data["institution"],
+            primary_username=auth_data["primary_username"],
+            primary_identity=auth_data["primary_identity"],
+        )
+
+        # Create response
+        response = make_response(redirect(NEXT_URL + "/sign-in"))
+
+        # Set cookie options based on environment
+        parsed_url = urlparse(request.host_url)
+        is_localhost = parsed_url.hostname == "localhost"
+        cookie_options = {
+            "secure": not is_localhost,
+            "samesite": "Lax",
+            "path": "/",
+            "domain": None if is_localhost else f".{parsed_url.hostname}",
+            "httponly": False,
+        }
+
+        # Set cookies
+        response.set_cookie("is_authenticated", "true", **cookie_options)
+        response.set_cookie(
+            "primary_username", session["primary_username"], **cookie_options
+        )
+        response.set_cookie(
+            "primary_identity", session["primary_identity"], **cookie_options
+        )
+        response.set_cookie("name", session["name"], **cookie_options)
+        response.set_cookie("email", session["email"], **cookie_options)
+        response.set_cookie("institution", session["institution"], **cookie_options)
+        response.set_cookie("tokens", str(session["tokens"]), **cookie_options)
+
+        return response
+
+    except Exception as e:
+        logger.error(f"Error processing auth completion: {str(e)}")
+        return redirect(NEXT_URL + "/sign-in")
+    
+
 @app.route("/api/loadprofile", methods=["GET"])
 def loadprofile():
     """Deprecated: Profile is now handled during auth flow."""
@@ -748,61 +805,6 @@ def diamond_delete_task():
     return jsonify({"message": "Task deleted successfully"})
 
 
-@app.route("/api/auth/complete", methods=["GET"])
-def auth_complete():
-    """Handle auth completion and set cookies."""
-    token = request.args.get("token")
-    if not token:
-        logger.error("No token provided in auth completion")
-        return redirect(NEXT_URL + "/sign-in")
-
-    try:
-        # Decode and validate the token
-        auth_data = validate_one_time_token(token)
-
-        # Update session
-        session.update(
-            tokens=auth_data["tokens"],
-            is_authenticated=True,
-            name=auth_data["name"],
-            email=auth_data["email"],
-            institution=auth_data["institution"],
-            primary_username=auth_data["primary_username"],
-            primary_identity=auth_data["primary_identity"],
-        )
-
-        # Create response
-        response = make_response(redirect(NEXT_URL + "/sign-in"))
-
-        # Set cookie options based on environment
-        parsed_url = urlparse(request.host_url)
-        is_localhost = parsed_url.hostname == "localhost"
-        cookie_options = {
-            "secure": not is_localhost,
-            "samesite": "Lax",
-            "path": "/",
-            "domain": None if is_localhost else f".{parsed_url.hostname}",
-            "httponly": False,
-        }
-
-        # Set cookies
-        response.set_cookie("is_authenticated", "true", **cookie_options)
-        response.set_cookie(
-            "primary_username", session["primary_username"], **cookie_options
-        )
-        response.set_cookie(
-            "primary_identity", session["primary_identity"], **cookie_options
-        )
-        response.set_cookie("name", session["name"], **cookie_options)
-        response.set_cookie("email", session["email"], **cookie_options)
-        response.set_cookie("institution", session["institution"], **cookie_options)
-        response.set_cookie("tokens", str(session["tokens"]), **cookie_options)
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Error processing auth completion: {str(e)}")
-        return redirect(NEXT_URL + "/sign-in")
 
 
 if __name__ == "__main__":
