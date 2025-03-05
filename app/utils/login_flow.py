@@ -1,5 +1,4 @@
 import json
-import logging
 import urllib.parse  # Add this import for URL decoding
 
 import globus_sdk
@@ -51,7 +50,7 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
     tokens_cookie = request.cookies.get("tokens")
 
     if not tokens_cookie:
-        logging.error("No tokens cookie found in request")
+        logger.error("No tokens cookie found in request")
         raise ValueError("No authentication tokens found. Please log in again.")
 
     try:
@@ -62,7 +61,7 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
         sanitized_tokens_cookie = url_decoded.replace("'", '"').replace("\\054", ",")
 
         # Log for debugging
-        logging.debug(
+        logger.debug(
             f"Sanitized tokens cookie (first 100 chars): {sanitized_tokens_cookie[:100]}..."
         )
 
@@ -73,7 +72,7 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
 
     # Log the structure that was successfully parsed
     if tokens_value:
-        logging.debug(
+        logger.debug(
             f"Successfully parsed tokens with keys: {list(tokens_value.keys())}"
         )
 
