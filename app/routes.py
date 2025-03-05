@@ -289,14 +289,18 @@ def diamond_list_active_endpoints():
     endpoints = globus_compute_client.get_endpoints()
     for endpoint in endpoints:
         endpoint_uuid = endpoint["uuid"]
-        endpoint_status = globus_compute_client.get_endpoint_status(
-            endpoint_uuid=endpoint_uuid
-        )["status"]
+        try:
+            endpoint_status = globus_compute_client.get_endpoint_status(
+                endpoint_uuid=endpoint_uuid
+            )["status"]
+        except Exception as e:
+            logger.error(f"Error getting endpoint status for endpoint {endpoint['name']}: {e}")
+            continue
         if endpoint_status == "online":
             active_endpoints.append(
                 {"endpoint_name": endpoint["name"], "endpoint_uuid": endpoint_uuid}
             )
-    logger.info(active_endpoints)
+    logger.info(f"active_endpoints: {active_endpoints}")
     return active_endpoints
 
 
@@ -304,14 +308,21 @@ def diamond_list_active_endpoints():
 @authenticated
 def diamond_get_partitions():
     endpoint_id = request.json.get("endpoint")
-    logger.info(f"endpoint_id: {endpoint_id}")
+    logger.info(f"partitions endpoint_id: {endpoint_id}")
     globus_compute_client = initialize_globus_compute_client()
-    globus_compute_executer = GlobusComputeExecutor(
-        client=globus_compute_client, endpoint_id=endpoint_id
+    partitions_func_id = globus_compute_client.register_function(get_partitions)
+    partitions_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_id,
+        function_id=partitions_func_id,
     )
-    fu = globus_compute_executer.submit(get_partitions)
-    partitions = fu.result().stdout
-    partition_list = partitions.split("\n")
+    partitions_task_status = globus_compute_client.get_task(partitions_task_id)
+    while partitions_task_status["pending"]:
+        time.sleep(2)
+        partitions_task_status = globus_compute_client.get_task(partitions_task_id)
+        continue
+    partitions_result = globus_compute_client.get_result(partitions_task_id)
+    partitions_output = partitions_result.stdout 
+    partition_list = partitions_output.split("\n")
     for partition in partition_list:
         if not partition:
             partition_list.remove(partition)
@@ -325,12 +336,19 @@ def diamond_get_accounts():
     endpoint_id = request.json.get("endpoint")
     logger.info(f"endpoint_id: {endpoint_id}")
     globus_compute_client = initialize_globus_compute_client()
-    globus_compute_executer = GlobusComputeExecutor(
-        client=globus_compute_client, endpoint_id=endpoint_id
+    accounts_func_id = globus_compute_client.register_function(get_accounts)
+    accounts_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_id,
+        function_id=accounts_func_id,
     )
-    fu = globus_compute_executer.submit(get_accounts)
-    accounts = fu.result().stdout
-    account_list = accounts.split("\n")
+    accounts_task_status = globus_compute_client.get_task(accounts_task_id)
+    while accounts_task_status["pending"]:
+        time.sleep(2)
+        accounts_task_status = globus_compute_client.get_task(accounts_task_id)
+        continue
+    accounts = globus_compute_client.get_result(accounts_task_id)
+    accounts_output = accounts.stdout
+    account_list = accounts_output.split("\n")
     for account in account_list:
         if not account:
             account_list.remove(account)
@@ -372,10 +390,6 @@ def diamond_endpoint_image_builder():
 #SBATCH --account={account}
 """
 
-    # use get_partitions Shell function.
-    # Use a env to have the command to get user accounts in an hpc system . Eg "accounts" in Delta.
-    # We need user input text input for accounts now.
-
     # First we create the def file using ShellFunction.
     globus_compute_client = initialize_globus_compute_client()
     def_file_creation_function_id = globus_compute_client.register_function(
@@ -396,14 +410,12 @@ def diamond_endpoint_image_builder():
         def_file_creation_task_id
     )
     while def_file_creation_task_status["pending"]:
-        print("def_file_creation_task_id", def_file_creation_task_status)
-        time.sleep(10)
+        time.sleep(2)
         def_file_creation_task_status = globus_compute_client.get_task(
             def_file_creation_task_id
         )
         continue
 
-    print("def_file_creation_task_id", def_file_creation_task_status)
     # Then we create the container using ShellFunction with SBATCH commands.
     function_id = globus_compute_client.register_function(
         container_builder_wrapper_shell
@@ -460,7 +472,7 @@ def get_build_log():
             get_build_log.log_reader_function_id = (
                 globus_compute_client.register_function(log_reader_wrapper)
             )
-            print(
+            logger.info(
                 f"Registered log reader function: {get_build_log.log_reader_function_id}"
             )
 
@@ -471,18 +483,18 @@ def get_build_log():
                 function_id=get_build_log.log_reader_function_id,
                 log_file_path=log_file_path,
             )
-            print(f"Created new log reader task: {log_task_id}")
+            logger.info(f"Created new log reader task: {log_task_id}")
 
         # Get status of current log reader task
         log_task_status = globus_compute_client.get_task(log_task_id)
-        print(f"Log task status: {log_task_status}")
+        logger.info(f"Log task status: {log_task_status}")
 
         # Get log content if task completed
         log_result = None
         if log_task_status.get("status") == "success":
             try:
                 log_result = globus_compute_client.get_result(log_task_id)
-                print(f"Log result: {log_result}")
+                logger.info(f"Log result: {log_result}")
 
                 # Create new task using the same function ID
                 new_log_task_id = globus_compute_client.run(
@@ -491,7 +503,7 @@ def get_build_log():
                     log_file_path=log_file_path,
                 )
             except Exception as e:
-                print(f"Error getting log result: {e}")
+                logger.error(f"Error getting log result: {e}")
                 log_result = {"content": "", "is_complete": False}
                 new_log_task_id = log_task_id
         else:
@@ -537,20 +549,28 @@ def get_containers():
     containers = database.load_containers(identity_id=identity_id)
     containers_data = {}
     for container in containers:
-        logger.info(f"container from db: {container.container_task_id}")
+        logger.info(f"container task_id: {container.container_task_id}")
         container_task_id = container.container_task_id
         name = container.name
 
         endpoint_id = container.endpoint_id
-        globus_compute_executer = GlobusComputeExecutor(
-            client=globus_compute_client, endpoint_id=endpoint_id
+        container_status_func_id = globus_compute_client.register_function(get_container_status)
+        container_status_task_id = globus_compute_client.run(
+            endpoint_id=endpoint_id,
+            function_id=container_status_func_id,
+            name=name
         )
-        fu = globus_compute_executer.submit(get_container_status, name=name)
-        fu_stdout = fu.result().stdout
-        if fu_stdout == "":
+        container_status_task_status = globus_compute_client.get_task(container_status_task_id)
+        while container_status_task_status["pending"]:
+            time.sleep(2)
+            container_status_task_status = globus_compute_client.get_task(container_status_task_id)
+            continue
+        container_status = globus_compute_client.get_result(container_status_task_id).stdout
+        logger.info(f"container_status: {container_status}")
+        if container_status == "":
             container_status = container.container_status
         else:
-            container_status = fu_stdout
+            container_status = container_status
             database.update_container_status(container_task_id, container_status)
 
         containers_data[name] = {
@@ -652,27 +672,38 @@ def diamond_endpoint_submit_job():
 @authenticated
 def diamond_get_task_status():
     identity_id = request.cookies.get("primary_identity")
-    global_compute_client = initialize_globus_compute_client()
+    globus_compute_client = initialize_globus_compute_client()
 
     tasks = database.load_tasks(identity_id=identity_id)
+    task_status_changed = False
 
     for task in tasks:
         task_id = task.task_id
-        logger.info(f"Updating status for task ID: {task_id}")
-
-        current_task = global_compute_client.get_task(task_id)
+        try:
+            current_task = globus_compute_client.get_task(task_id)
+        except Exception as e:
+            logger.warning(f"Task {task_id} not found. Error: {e}")
+            continue
 
         task.endpoint_id = current_task["details"]["endpoint_id"]
-        globus_compute_executor = GlobusComputeExecutor(
-            client=global_compute_client, endpoint_id=task.endpoint_id
+        task_status_func_id = globus_compute_client.register_function(get_task_status)
+        task_status_task_id = globus_compute_client.run(
+            endpoint_id=task.endpoint_id,
+            function_id=task_status_func_id,
+            task_name=task.task_name
         )
-        fu = globus_compute_executor.submit(get_task_status, task_name=task.task_name)
-        fu_stdout = fu.result().stdout
-        if fu_stdout == "":
+        task_status_task_status = globus_compute_client.get_task(task_status_task_id)
+        while task_status_task_status["pending"]:
+            time.sleep(2)
+            task_status_task_status = globus_compute_client.get_task(task_status_task_id)
+            continue
+        task_status = globus_compute_client.get_result(task_status_task_id).stdout
+        if task_status == "":
             task.task_status = task.task_status
         else:
-            task.task_status = fu_stdout
-        logger.info(fu_stdout)
+            task.task_status = task_status
+            task_status_changed = True
+        logger.info(task_status)
 
         database.save_task(
             task_id=task.task_id,
