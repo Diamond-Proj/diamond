@@ -1,12 +1,9 @@
-import os
 import time
 from datetime import datetime
-from urllib.parse import urlparse
 
-from flask import flash, jsonify, make_response, redirect, request, session, url_for
-from globus_compute_sdk import Executor as GlobusComputeExecutor
+from flask import jsonify, redirect, request
 
-from . import app, database, is_production, logger
+from . import app, database, logger
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
@@ -18,14 +15,7 @@ from .utils.functions import (
     log_reader_wrapper,
     submit_task,
 )
-from .utils.login_flow import AuthClientManager, initialize_globus_compute_client
-from .utils.utils import (
-    generate_one_time_token,
-    get_safe_redirect,
-    load_portal_client,
-    validate_one_time_token,
-)
-
+from .utils.login_flow import initialize_globus_compute_client
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
@@ -53,232 +43,12 @@ def healthcheck():
     )
 
 
-def initiate_auth_flow(signup=False, state=None):
-    """Common logic for login/signup."""
-    # If we're not production, redirect to production auth
-    if AUTH_URL:
-        redirect_uri = request.host_url.rstrip("/")  # Current backend URL
-        auth_url = f"{AUTH_URL}/api/{'signup' if signup else 'login'}?redirect_uri={redirect_uri}"
-        return redirect(auth_url)
-
-    # Production auth flow
-    globus_auth_redirect_uri = url_for("authcallback", _external=True)
-    auth_uri = AuthClientManager.start_auth_flow(
-        redirect_uri=globus_auth_redirect_uri,
-        scopes=os.environ["USER_SCOPES"].split(),
-        signup=signup,
-        state=state,
-    )
-    return redirect(auth_uri)
-
-
-@app.route("/api/signup", methods=["GET"])
-def signup():
-    """Send the user to Globus Auth with signup=1."""
-    # This is the redirect_uri for the source backend
-    return initiate_auth_flow(signup=True, state=request.args.get("redirect_uri"))
-
-
-@app.route("/api/login", methods=["GET"])
-def login():
-    """Send the user to Globus Auth."""
-    # This is the redirect_uri for the source backend, proxied here
-    return initiate_auth_flow(state=request.args.get("redirect_uri"))
-
-
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
 def is_authenticated():
     # log.info(f"cookies in backend: {request.cookies}")
     # log.info(f"session in backend: {session}")
     return jsonify({"is_authenticated": True})
-
-
-@app.route("/api/logout", methods=["GET"])
-@authenticated
-def logout():
-    """
-    - Revoke the tokens with Globus Auth.
-    - Destroy the session state.
-    - Remove cookies containing 'tokens'.
-    - Redirect the user to the Globus Auth logout page.
-    """
-    client = load_portal_client()
-
-    # Revoke the tokens with Globus Auth
-    for token, token_type in (
-        (token_info[ty], ty)
-        # get all of the token info dicts
-        for token_info in session["tokens"].values()
-        # cross product with the set of token types
-        for ty in ("access_token", "refresh_token")
-        # only where the relevant token is actually present
-        if token_info[ty] is not None
-    ):
-        client.oauth2_revoke_token(token, body_params={"token_type_hint": token_type})
-
-    # Destroy the session state
-    session.clear()
-
-    # Remove cookies containing 'tokens'
-    response = make_response(redirect(url_for("home", _external=True)))
-    response.delete_cookie("tokens")
-
-    logger.info(f"Session after clearing: {session}")
-
-    redirect_uri = url_for("home", _external=True)
-
-    ga_logout_url = []
-    ga_logout_url.append(os.environ["GLOBUS_AUTH_LOGOUT_URI"])
-    ga_logout_url.append("?client={}".format(os.environ["PORTAL_CLIENT_ID"]))
-    ga_logout_url.append("&redirect_uri={}".format(redirect_uri))
-    ga_logout_url.append("&redirect_name=Diamond Service")
-
-    # Redirect the user to the Globus Auth logout page
-    response.headers["Location"] = "".join(ga_logout_url)
-    return response
-
-
-@app.route("/api/profile", methods=["GET"])
-@authenticated
-def profile():
-    """Get user profile information if needed."""
-    identity_id = session.get("primary_identity")
-    if not identity_id:
-        return jsonify({"error": "No identity found"}), 401
-
-    profile = database.load_profile(identity_id)
-    if not profile:
-        return jsonify({"error": "Profile not found"}), 404
-
-    return jsonify(
-        {
-            "name": profile.name,
-            "email": profile.email,
-            "institution": profile.institution,
-            "primary_identity": identity_id,
-        }
-    )
-
-
-@app.route("/api/authcallback", methods=["GET"])
-def authcallback():
-    """Handle the response from Globus Auth."""
-    if "error" in request.args:
-        error_msg = request.args.get("error_description", request.args["error"])
-        logger.error(f"Globus Auth error: {error_msg}")
-        return redirect(NEXT_URL + "/sign-in")
-
-    try:
-        tokens = AuthClientManager.exchange_code(request.args.get("code"))
-
-        id_token = tokens.decode_id_token()
-        identity_id = id_token.get("sub")
-
-        # Get source backend from state parameter
-        source_backend = (
-            None
-            if request.args.get("state") == "_default"
-            else request.args.get("state")
-        )
-
-        if not identity_id:
-            if source_backend:
-                logger.error("No identity_id in token")
-                return redirect(source_backend)
-            logger.error("No identity_id in token")
-            return redirect(NEXT_URL + "/sign-in")
-
-        # Create/update profile
-        database.save_profile(
-            identity_id=identity_id,
-            name=id_token.get("name"),
-            email=id_token.get("email"),
-            institution=id_token.get("organization"),
-        )
-
-        if source_backend:
-            # Generate token for source backend
-            auth_data = {
-                "tokens": tokens.by_resource_server,
-                "name": id_token.get("name"),
-                "email": id_token.get("email"),
-                "institution": id_token.get("organization"),
-                "primary_username": id_token.get("preferred_username"),
-                "primary_identity": identity_id,
-            }
-
-            one_time_token = generate_one_time_token(auth_data)
-            return redirect(
-                f"{source_backend}/api/auth/complete?token={one_time_token}"
-            )
-
-        # Direct auth (production) - set cookies and redirect
-        session.update(
-            tokens=tokens.by_resource_server,
-            is_authenticated=True,
-            name=id_token.get("name"),
-            email=id_token.get("email"),
-            institution=id_token.get("organization"),
-            primary_username=id_token.get("preferred_username"),
-            primary_identity=identity_id,
-        )
-
-        response = make_response(redirect(NEXT_URL + "/sign-in"))
-
-        # Set cookie options
-        primary_hostname = urlparse(request.host_url).hostname
-        is_localhost = primary_hostname == "localhost"
-
-        # For production, extract domain from NEXT_URL properly
-        if is_production:
-            next_url_parsed = urlparse(NEXT_URL)
-            primary_hostname = next_url_parsed.hostname
-
-        # Determine the cookie domain
-        cookie_domain = None if is_localhost else primary_hostname
-        if cookie_domain and not is_localhost and not cookie_domain.startswith("."):
-            cookie_domain = f".{cookie_domain}"
-
-        cookie_options = {
-            "secure": not is_localhost,
-            "samesite": "Lax",
-            "path": "/",
-            "domain": cookie_domain,
-            "httponly": False,
-            # Add max age to ensure cookies persist
-            "max_age": 7 * 24 * 60 * 60,  # 7 days
-        }
-
-        # Set cookies with debug logger
-        logger.info(f"Setting cookies with options: {cookie_options}")
-        logger.info(f"Cookie domain: {cookie_domain}")
-
-        # Set cookies
-        response.set_cookie("is_authenticated", "true", **cookie_options)
-        response.set_cookie(
-            "primary_username", session["primary_username"], **cookie_options
-        )
-        response.set_cookie(
-            "primary_identity", session["primary_identity"], **cookie_options
-        )
-        response.set_cookie("name", session["name"], **cookie_options)
-        response.set_cookie("email", session["email"], **cookie_options)
-        response.set_cookie("institution", session["institution"], **cookie_options)
-        response.set_cookie("tokens", str(session["tokens"]), **cookie_options)
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Error in authcallback: {str(e)}")
-        return redirect(NEXT_URL + "/sign-in")
-
-
-@app.route("/api/loadprofile", methods=["GET"])
-def loadprofile():
-    """Deprecated: Profile is now handled during auth flow."""
-    logger.warning("Deprecated /api/loadprofile called")
-    return redirect(NEXT_URL + "/profile")
 
 
 @app.route("/api/list_active_endpoints", methods=["GET"])
@@ -289,14 +59,20 @@ def diamond_list_active_endpoints():
     endpoints = globus_compute_client.get_endpoints()
     for endpoint in endpoints:
         endpoint_uuid = endpoint["uuid"]
-        endpoint_status = globus_compute_client.get_endpoint_status(
-            endpoint_uuid=endpoint_uuid
-        )["status"]
+        try:
+            endpoint_status = globus_compute_client.get_endpoint_status(
+                endpoint_uuid=endpoint_uuid
+            )["status"]
+        except Exception as e:
+            logger.error(
+                f"Error getting endpoint status for endpoint {endpoint['name']}: {e}"
+            )
+            continue
         if endpoint_status == "online":
             active_endpoints.append(
                 {"endpoint_name": endpoint["name"], "endpoint_uuid": endpoint_uuid}
             )
-    logger.info(active_endpoints)
+    logger.info(f"active_endpoints: {active_endpoints}")
     return active_endpoints
 
 
@@ -304,14 +80,21 @@ def diamond_list_active_endpoints():
 @authenticated
 def diamond_get_partitions():
     endpoint_id = request.json.get("endpoint")
-    logger.info(f"endpoint_id: {endpoint_id}")
+    logger.info(f"partitions endpoint_id: {endpoint_id}")
     globus_compute_client = initialize_globus_compute_client()
-    globus_compute_executer = GlobusComputeExecutor(
-        client=globus_compute_client, endpoint_id=endpoint_id
+    partitions_func_id = globus_compute_client.register_function(get_partitions)
+    partitions_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_id,
+        function_id=partitions_func_id,
     )
-    fu = globus_compute_executer.submit(get_partitions)
-    partitions = fu.result().stdout
-    partition_list = partitions.split("\n")
+    partitions_task_status = globus_compute_client.get_task(partitions_task_id)
+    while partitions_task_status["pending"]:
+        time.sleep(2)
+        partitions_task_status = globus_compute_client.get_task(partitions_task_id)
+        continue
+    partitions_result = globus_compute_client.get_result(partitions_task_id)
+    partitions_output = partitions_result.stdout
+    partition_list = partitions_output.split("\n")
     for partition in partition_list:
         if not partition:
             partition_list.remove(partition)
@@ -325,12 +108,19 @@ def diamond_get_accounts():
     endpoint_id = request.json.get("endpoint")
     logger.info(f"endpoint_id: {endpoint_id}")
     globus_compute_client = initialize_globus_compute_client()
-    globus_compute_executer = GlobusComputeExecutor(
-        client=globus_compute_client, endpoint_id=endpoint_id
+    accounts_func_id = globus_compute_client.register_function(get_accounts)
+    accounts_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_id,
+        function_id=accounts_func_id,
     )
-    fu = globus_compute_executer.submit(get_accounts)
-    accounts = fu.result().stdout
-    account_list = accounts.split("\n")
+    accounts_task_status = globus_compute_client.get_task(accounts_task_id)
+    while accounts_task_status["pending"]:
+        time.sleep(2)
+        accounts_task_status = globus_compute_client.get_task(accounts_task_id)
+        continue
+    accounts = globus_compute_client.get_result(accounts_task_id)
+    accounts_output = accounts.stdout
+    account_list = accounts_output.split("\n")
     for account in account_list:
         if not account:
             account_list.remove(account)
@@ -372,10 +162,6 @@ def diamond_endpoint_image_builder():
 #SBATCH --account={account}
 """
 
-    # use get_partitions Shell function.
-    # Use a env to have the command to get user accounts in an hpc system . Eg "accounts" in Delta.
-    # We need user input text input for accounts now.
-
     # First we create the def file using ShellFunction.
     globus_compute_client = initialize_globus_compute_client()
     def_file_creation_function_id = globus_compute_client.register_function(
@@ -396,14 +182,12 @@ def diamond_endpoint_image_builder():
         def_file_creation_task_id
     )
     while def_file_creation_task_status["pending"]:
-        print("def_file_creation_task_id", def_file_creation_task_status)
-        time.sleep(10)
+        time.sleep(2)
         def_file_creation_task_status = globus_compute_client.get_task(
             def_file_creation_task_id
         )
         continue
 
-    print("def_file_creation_task_id", def_file_creation_task_status)
     # Then we create the container using ShellFunction with SBATCH commands.
     function_id = globus_compute_client.register_function(
         container_builder_wrapper_shell
@@ -460,7 +244,7 @@ def get_build_log():
             get_build_log.log_reader_function_id = (
                 globus_compute_client.register_function(log_reader_wrapper)
             )
-            print(
+            logger.info(
                 f"Registered log reader function: {get_build_log.log_reader_function_id}"
             )
 
@@ -471,18 +255,18 @@ def get_build_log():
                 function_id=get_build_log.log_reader_function_id,
                 log_file_path=log_file_path,
             )
-            print(f"Created new log reader task: {log_task_id}")
+            logger.info(f"Created new log reader task: {log_task_id}")
 
         # Get status of current log reader task
         log_task_status = globus_compute_client.get_task(log_task_id)
-        print(f"Log task status: {log_task_status}")
+        logger.info(f"Log task status: {log_task_status}")
 
         # Get log content if task completed
         log_result = None
         if log_task_status.get("status") == "success":
             try:
                 log_result = globus_compute_client.get_result(log_task_id)
-                print(f"Log result: {log_result}")
+                logger.info(f"Log result: {log_result}")
 
                 # Create new task using the same function ID
                 new_log_task_id = globus_compute_client.run(
@@ -491,7 +275,7 @@ def get_build_log():
                     log_file_path=log_file_path,
                 )
             except Exception as e:
-                print(f"Error getting log result: {e}")
+                logger.error(f"Error getting log result: {e}")
                 log_result = {"content": "", "is_complete": False}
                 new_log_task_id = log_task_id
         else:
@@ -537,20 +321,34 @@ def get_containers():
     containers = database.load_containers(identity_id=identity_id)
     containers_data = {}
     for container in containers:
-        logger.info(f"container from db: {container.container_task_id}")
+        logger.info(f"container task_id: {container.container_task_id}")
         container_task_id = container.container_task_id
         name = container.name
 
         endpoint_id = container.endpoint_id
-        globus_compute_executer = GlobusComputeExecutor(
-            client=globus_compute_client, endpoint_id=endpoint_id
+        container_status_func_id = globus_compute_client.register_function(
+            get_container_status
         )
-        fu = globus_compute_executer.submit(get_container_status, name=name)
-        fu_stdout = fu.result().stdout
-        if fu_stdout == "":
+        container_status_task_id = globus_compute_client.run(
+            endpoint_id=endpoint_id, function_id=container_status_func_id, name=name
+        )
+        container_status_task_status = globus_compute_client.get_task(
+            container_status_task_id
+        )
+        while container_status_task_status["pending"]:
+            time.sleep(2)
+            container_status_task_status = globus_compute_client.get_task(
+                container_status_task_id
+            )
+            continue
+        container_status = globus_compute_client.get_result(
+            container_status_task_id
+        ).stdout
+        logger.info(f"container_status: {container_status}")
+        if container_status == "":
             container_status = container.container_status
         else:
-            container_status = fu_stdout
+            container_status = container_status
             database.update_container_status(container_task_id, container_status)
 
         containers_data[name] = {
@@ -652,27 +450,40 @@ def diamond_endpoint_submit_job():
 @authenticated
 def diamond_get_task_status():
     identity_id = request.cookies.get("primary_identity")
-    global_compute_client = initialize_globus_compute_client()
+    globus_compute_client = initialize_globus_compute_client()
 
     tasks = database.load_tasks(identity_id=identity_id)
+    task_status_changed = False
 
     for task in tasks:
         task_id = task.task_id
-        logger.info(f"Updating status for task ID: {task_id}")
-
-        current_task = global_compute_client.get_task(task_id)
+        try:
+            current_task = globus_compute_client.get_task(task_id)
+        except Exception as e:
+            logger.warning(f"Task {task_id} not found. Error: {e}")
+            continue
 
         task.endpoint_id = current_task["details"]["endpoint_id"]
-        globus_compute_executor = GlobusComputeExecutor(
-            client=global_compute_client, endpoint_id=task.endpoint_id
+        task_status_func_id = globus_compute_client.register_function(get_task_status)
+        task_status_task_id = globus_compute_client.run(
+            endpoint_id=task.endpoint_id,
+            function_id=task_status_func_id,
+            task_name=task.task_name,
         )
-        fu = globus_compute_executor.submit(get_task_status, task_name=task.task_name)
-        fu_stdout = fu.result().stdout
-        if fu_stdout == "":
+        task_status_task_status = globus_compute_client.get_task(task_status_task_id)
+        while task_status_task_status["pending"]:
+            time.sleep(2)
+            task_status_task_status = globus_compute_client.get_task(
+                task_status_task_id
+            )
+            continue
+        task_status = globus_compute_client.get_result(task_status_task_id).stdout
+        if task_status == "":
             task.task_status = task.task_status
         else:
-            task.task_status = fu_stdout
-        logger.info(fu_stdout)
+            task.task_status = task_status
+            task_status_changed = True
+        logger.info(task_status)
 
         database.save_task(
             task_id=task.task_id,
@@ -715,63 +526,6 @@ def diamond_delete_task():
     database.delete_task(task_id)
     logger.info(f"task {task_id} deleted")
     return jsonify({"message": "Task deleted successfully"})
-
-
-@app.route("/api/auth/complete", methods=["GET"])
-def auth_complete():
-    """Handle auth completion and set cookies."""
-    token = request.args.get("token")
-    if not token:
-        logger.error("No token provided in auth completion")
-        return redirect(NEXT_URL + "/sign-in")
-
-    try:
-        # Decode and validate the token
-        auth_data = validate_one_time_token(token)
-
-        # Update session
-        session.update(
-            tokens=auth_data["tokens"],
-            is_authenticated=True,
-            name=auth_data["name"],
-            email=auth_data["email"],
-            institution=auth_data["institution"],
-            primary_username=auth_data["primary_username"],
-            primary_identity=auth_data["primary_identity"],
-        )
-
-        # Create response
-        response = make_response(redirect(NEXT_URL + "/sign-in"))
-
-        # Set cookie options based on environment
-        parsed_url = urlparse(request.host_url)
-        is_localhost = parsed_url.hostname == "localhost"
-        cookie_options = {
-            "secure": not is_localhost,
-            "samesite": "Lax",
-            "path": "/",
-            "domain": None if is_localhost else f".{parsed_url.hostname}",
-            "httponly": False,
-        }
-
-        # Set cookies
-        response.set_cookie("is_authenticated", "true", **cookie_options)
-        response.set_cookie(
-            "primary_username", session["primary_username"], **cookie_options
-        )
-        response.set_cookie(
-            "primary_identity", session["primary_identity"], **cookie_options
-        )
-        response.set_cookie("name", session["name"], **cookie_options)
-        response.set_cookie("email", session["email"], **cookie_options)
-        response.set_cookie("institution", session["institution"], **cookie_options)
-        response.set_cookie("tokens", str(session["tokens"]), **cookie_options)
-
-        return response
-
-    except Exception as e:
-        logger.error(f"Error processing auth completion: {str(e)}")
-        return redirect(NEXT_URL + "/sign-in")
 
 
 if __name__ == "__main__":

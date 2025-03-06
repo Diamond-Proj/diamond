@@ -1,5 +1,4 @@
 import json
-import logging
 import urllib.parse  # Add this import for URL decoding
 
 import globus_sdk
@@ -24,34 +23,12 @@ class AuthClientManager:
             cls._client = load_portal_client()
         return cls._client
 
-    @classmethod
-    def start_auth_flow(cls, redirect_uri, scopes, signup=False, state=None):
-        client = cls.get_client()
-        client.oauth2_start_flow(
-            redirect_uri, refresh_tokens=True, requested_scopes=scopes
-        )
-        if state:
-            params = {"state": state}
-        else:
-            params = {}
-
-        if signup:
-            params["signup"] = "1"
-
-        auth_uri = client.oauth2_get_authorize_url(query_params=params)
-        return auth_uri
-
-    @classmethod
-    def exchange_code(cls, code):
-        client = cls.get_client()
-        return client.oauth2_exchange_code_for_tokens(code)
-
 
 def initialize_compute_login_manager() -> AuthorizerLoginManager:
     tokens_cookie = request.cookies.get("tokens")
 
     if not tokens_cookie:
-        logging.error("No tokens cookie found in request")
+        logger.error("No tokens cookie found in request")
         raise ValueError("No authentication tokens found. Please log in again.")
 
     try:
@@ -62,7 +39,7 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
         sanitized_tokens_cookie = url_decoded.replace("'", '"').replace("\\054", ",")
 
         # Log for debugging
-        logging.debug(
+        logger.debug(
             f"Sanitized tokens cookie (first 100 chars): {sanitized_tokens_cookie[:100]}..."
         )
 
@@ -73,7 +50,7 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
 
     # Log the structure that was successfully parsed
     if tokens_value:
-        logging.debug(
+        logger.debug(
             f"Successfully parsed tokens with keys: {list(tokens_value.keys())}"
         )
 

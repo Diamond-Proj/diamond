@@ -6,7 +6,13 @@ from app.database.db import db
 from app.database.models.container import Container
 from app.database.models.profile import Profile
 from app.database.models.task import Task
-from .. import logger
+ 
+import logging  # some issue with importing logger from app
+
+logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%dT%H:%M:%S',
+                    format='%(asctime)-15s.%(msecs)03dZ %(levelname)-7s : %(name)s - %(message)s')
+logger = logging.getLogger(__name__)
+
 
 class Database:
 
