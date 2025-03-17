@@ -42,7 +42,23 @@ def healthcheck():
         200,
     )
 
+@app.route("/api/profile", methods=["POST"])
+@authenticated
+def profile():
+    """User profile information. Associated with a Globus Auth identity."""
+    identity_id = request.json.get("identity_id")   
+    name = request.json.get("name")
+    email = request.json.get("email")
+    institution = request.json.get("institution")
+    database.save_profile(
+        identity_id=identity_id,
+        name=name,
+        email=email,
+        institution=institution,
+    )
+    return jsonify({"message": "Profile updated successfully"})
 
+    
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
 def is_authenticated():
@@ -121,10 +137,12 @@ def diamond_get_accounts():
     accounts = globus_compute_client.get_result(accounts_task_id)
     accounts_output = accounts.stdout
     account_list = accounts_output.split("\n")
+    account_list_fake = ["bcqj-delta-cpu"]
     for account in account_list:
         if not account:
             account_list.remove(account)
     logger.info(f"accounts: {account_list}")
+    logger.info(f"accounts_fake: {account_list_fake}")
     return jsonify(account_list)
 
 
