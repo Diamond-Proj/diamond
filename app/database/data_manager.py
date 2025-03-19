@@ -42,17 +42,17 @@ class Database:
     #     with self.app.app_context():
     #         db.create_all()
 
-    def save_profile(self, identity_id=None, name=None, email=None, institution=None):
-        logger.info(f"Saving profile: {name}, {email}, {institution}")
-        profile = Profile(
-            identity_id=identity_id, name=name, email=email, institution=institution
-        )
-        db.session.merge(profile)
-        db.session.commit()
+    # def save_profile(self, identity_id=None, name=None, email=None, institution=None):
+    #     logger.info(f"Saving profile: {name}, {email}, {institution}")
+    #     profile = Profile(
+    #         identity_id=identity_id, name=name, email=email, institution=institution
+    #     )
+    #     db.session.merge(profile)
+    #     db.session.commit()
 
-    def load_profile(self, identity_id):
-        logger.info(f"Loading profile: {identity_id}")
-        return Profile.query.filter_by(identity_id=identity_id).first()
+    # def load_profile(self, identity_id):
+    #     logger.info(f"Loading profile: {identity_id}")
+    #     return Profile.query.filter_by(identity_id=identity_id).first()
 
     def save_task(
         self,
