@@ -38,9 +38,9 @@ class Database:
     #         # Create an empty file
     #         db_path.touch()
 
-    def ensure_tables_exist(self):
-        with self.app.app_context():
-            db.create_all()
+    # def ensure_tables_exist(self):
+    #     with self.app.app_context():
+    #         db.create_all()
 
     def save_profile(self, identity_id=None, name=None, email=None, institution=None):
         logger.info(f"Saving profile: {name}, {email}, {institution}")
