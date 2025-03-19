@@ -42,7 +42,7 @@ def healthcheck():
         200,
     )
 
-
+    
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
 def is_authenticated():
