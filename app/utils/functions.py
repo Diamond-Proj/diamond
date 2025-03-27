@@ -51,6 +51,7 @@ cat << EOF > test.submit
 #SBATCH --job-name={container_name}
 #SBATCH --output={location}/{container_name}_log.stdout
 #SBATCH --error={location}/{container_name}_log.stderr
+#SBATCH --nodes=1
 {slurm_commands}  
 echo $PWD
 srun apptainer build {location}/{container_name}.sif {location}/{container_name}.def
