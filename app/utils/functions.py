@@ -7,7 +7,7 @@ from globus_compute_sdk import Executor as GlobusComputeExecutor
 get_partitions = ShellFunction('sinfo -h -o "%P"')
 
 
-get_accounts = ShellFunction(os.getenv('ACCOUNTS_COMMAND', 'accounts'))
+get_accounts = ShellFunction('sacctmgr show associations --noheader -P user=$USER format=Account')
 
 
 get_container_status = ShellFunction('squeue --name={name} -h -o "%T"')
@@ -51,6 +51,7 @@ cat << EOF > test.submit
 #SBATCH --job-name={container_name}
 #SBATCH --output={location}/{container_name}_log.stdout
 #SBATCH --error={location}/{container_name}_log.stderr
+#SBATCH --nodes=1
 {slurm_commands}  
 echo $PWD
 srun apptainer build {location}/{container_name}.sif {location}/{container_name}.def
@@ -80,28 +81,28 @@ def log_reader_wrapper(log_file_path):
             'is_complete': False,
             'error': str(e)
         }
-    
 
 
 submit_task = ShellFunction(
 """
-cat << EOF > test1.submit
+cat << EOF > diamond_task.submit
 #!/bin/bash
 
 #SBATCH --job-name={task_name}
 #SBATCH --output={log_path}/{task_name}.stdout
 #SBATCH --error={log_path}/{task_name}.stderr
 #SBATCH --nodes={num_of_nodes}
-#SBATCH --time=00:10:00
+#SBATCH --time=00:30:00
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
 #SBATCH --partition={partition}
 #SBATCH --account={account}
+
 echo $PWD                       
 srun apptainer run --bind={log_path},{container_path} {container} {task}
 
 EOF
 
-sbatch $PWD/test1.submit
+sbatch $PWD/diamond_task.submit
 """
 )

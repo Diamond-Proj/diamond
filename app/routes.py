@@ -3,19 +3,23 @@ from datetime import datetime
 
 from flask import jsonify, redirect, request
 
-from . import app, database, logger
+from . import app, database, temp_database, logger
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
     container_builder_wrapper_shell,
-    get_accounts,
     get_container_status,
-    get_partitions,
     get_task_status,
     log_reader_wrapper,
     submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client
+from .utils.data_prep import (
+    register_active_endpoints,
+    load_endpoints_partitions,
+    load_endpoints_accounts,
+)
+
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
@@ -46,85 +50,54 @@ def healthcheck():
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
 def is_authenticated():
-    # log.info(f"cookies in backend: {request.cookies}")
-    # log.info(f"session in backend: {session}")
     return jsonify({"is_authenticated": True})
+
+
+@app.route("/api/data_prep", methods=["POST"])
+def diamond_data_prep():
+    globus_compute_client = initialize_globus_compute_client()
+    user_id = request.cookies.get("primary_identity")
+    if not temp_database.exists_user_id(user_id):
+        temp_database.save_user_id(user_id)
+        logger.info(f"User ID {user_id} saved to temp database")
+    register_active_endpoints(globus_compute_client, user_id, temp_database, logger)
+    load_endpoints_partitions(globus_compute_client, user_id, temp_database, logger)
+    load_endpoints_accounts(globus_compute_client, user_id, temp_database, logger)
+    return jsonify({"status": "success"}), 200
 
 
 @app.route("/api/list_active_endpoints", methods=["GET"])
 @authenticated
 def diamond_list_active_endpoints():
-    globus_compute_client = initialize_globus_compute_client()
+    user_id = request.cookies.get("primary_identity")
+    logger.info(f"Loading active endpoints for user: {user_id}")
     active_endpoints = []
-    endpoints = globus_compute_client.get_endpoints()
-    for endpoint in endpoints:
-        endpoint_uuid = endpoint["uuid"]
-        try:
-            endpoint_status = globus_compute_client.get_endpoint_status(
-                endpoint_uuid=endpoint_uuid
-            )["status"]
-        except Exception as e:
-            logger.error(
-                f"Error getting endpoint status for endpoint {endpoint['name']}: {e}"
-            )
-            continue
-        if endpoint_status == "online":
-            active_endpoints.append(
-                {"endpoint_name": endpoint["name"], "endpoint_uuid": endpoint_uuid}
-            )
-    logger.info(f"active_endpoints: {active_endpoints}")
+    for endpoint in temp_database.get_endpoints(user_id):
+            active_endpoints.append({
+                "endpoint_name": endpoint.endpoint_name,
+                "endpoint_uuid": endpoint.endpoint_uuid,
+                "endpoint_host": endpoint.endpoint_host,
+            })
     return active_endpoints
 
 
 @app.route("/api/list_partitions", methods=["POST"])
 @authenticated
 def diamond_get_partitions():
-    endpoint_id = request.json.get("endpoint")
-    logger.info(f"partitions endpoint_id: {endpoint_id}")
-    globus_compute_client = initialize_globus_compute_client()
-    partitions_func_id = globus_compute_client.register_function(get_partitions)
-    partitions_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_id,
-        function_id=partitions_func_id,
+    partition_list = temp_database.get_partitions(
+        user_id=request.cookies.get("primary_identity"),
+        endpoint_uuid=request.json.get("endpoint"),
     )
-    partitions_task_status = globus_compute_client.get_task(partitions_task_id)
-    while partitions_task_status["pending"]:
-        time.sleep(2)
-        partitions_task_status = globus_compute_client.get_task(partitions_task_id)
-        continue
-    partitions_result = globus_compute_client.get_result(partitions_task_id)
-    partitions_output = partitions_result.stdout
-    partition_list = partitions_output.split("\n")
-    for partition in partition_list:
-        if not partition:
-            partition_list.remove(partition)
-    logger.info(f"partitions: {partition_list}")
     return jsonify(partition_list)
 
 
 @app.route("/api/list_accounts", methods=["POST"])
 @authenticated
 def diamond_get_accounts():
-    endpoint_id = request.json.get("endpoint")
-    logger.info(f"endpoint_id: {endpoint_id}")
-    globus_compute_client = initialize_globus_compute_client()
-    accounts_func_id = globus_compute_client.register_function(get_accounts)
-    accounts_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_id,
-        function_id=accounts_func_id,
+    account_list = temp_database.get_accounts(
+        user_id=request.cookies.get("primary_identity"),
+        endpoint_uuid=request.json.get("endpoint"),
     )
-    accounts_task_status = globus_compute_client.get_task(accounts_task_id)
-    while accounts_task_status["pending"]:
-        time.sleep(2)
-        accounts_task_status = globus_compute_client.get_task(accounts_task_id)
-        continue
-    accounts = globus_compute_client.get_result(accounts_task_id)
-    accounts_output = accounts.stdout
-    account_list = accounts_output.split("\n")
-    for account in account_list:
-        if not account:
-            account_list.remove(account)
-    logger.info(f"accounts: {account_list}")
     return jsonify(account_list)
 
 
@@ -414,20 +387,9 @@ def diamond_endpoint_submit_job():
     logger.info(f"submit_task_status: {submit_task_status}")
     while submit_task_status["pending"]:
         logger.info("submit_task_status", submit_task_status)
-        time.sleep(10)
+        time.sleep(2)
         submit_task_status = globus_compute_client.get_task(task_id)
         continue
-
-    # fu = globus_compute_executor.submit(
-    #     submit_task,
-    #     partition=partition,
-    #     container=container_path + "/" + container + ".sif",
-    #     task=task,
-    #     log_path=log_path,
-    #     num_of_nodes=num_of_nodes,
-    #     task_name=task_name)
-
-    # fu_stdout = fu.result().stdout
 
     database.save_task(
         task_id=task_id,
