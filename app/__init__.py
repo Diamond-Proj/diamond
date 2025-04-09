@@ -8,7 +8,6 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .database.data_manager import Database
-from .tempdb.tempdb_manager import TempDatabase
 
 
 # Load environment variables first, before any other imports or app creation
@@ -52,20 +51,12 @@ CORS(
 
 app.config.from_mapping(config)
 
-app.config['SQLALCHEMY_BINDS'] = {
-    # 'temp_db': 'sqlite:///:memory:'
-    'temp_db': 'sqlite:////Users/haotianxie/work/diamond-admin-backend/data/app.db'
-}
-
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
 basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 # print("sql url: ", app.config["SQLALCHEMY_DATABASE_URI"])
 
 with app.app_context():
     database = Database(app)
-    temp_database = TempDatabase(app)
 
 
 # Import routes after app is created to avoid circular imports

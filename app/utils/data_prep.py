@@ -1,5 +1,4 @@
 import time
-from datetime import datetime
 
 from .parsers import resolve_host
 from .functions import (
@@ -7,8 +6,9 @@ from .functions import (
     get_accounts,
 )
 
-def register_active_endpoints(globus_compute_client, user_id, temp_database, logger):
-    logger.info(f"Registering active endpoints for user: {user_id}")
+
+def register_active_endpoints(globus_compute_client, identity_id, database, logger):
+    logger.info(f"Registering active endpoints for user: {identity_id}")
     endpoints = globus_compute_client.get_endpoints()
     for endpoint in endpoints:
         logger.info(f"Checking endpoint: {endpoint}")
@@ -25,18 +25,18 @@ def register_active_endpoints(globus_compute_client, user_id, temp_database, log
             endpoint_metadata = globus_compute_client.get_endpoint_metadata(
                 endpoint_uuid=endpoint_uuid)
             endpoint_host = resolve_host(endpoint_metadata["hostname"])
-            if not temp_database.exists_endpoint(user_id=user_id, endpoint_uuid=endpoint_uuid):
-                logger.info(f"Saving endpoint: {endpoint_name}, {endpoint_host}, {endpoint_uuid}")
-                temp_database.save_endpoint(
-                    user_id=user_id,
+            if not database.exists_endpoint(endpoint_uuid=endpoint_uuid):
+                logger.info(f"Saving endpoint: {endpoint_uuid}")
+                database.save_endpoint(
+                    identity_id=identity_id,
                     endpoint_name=endpoint_name,
                     endpoint_host=endpoint_host,
                     endpoint_uuid=endpoint_uuid,
                 )
     return
 
-def load_endpoints_partitions(globus_compute_client, user_id, temp_database, logger):
-    endpoints = temp_database.get_endpoints(user_id=user_id)
+def load_endpoints_partitions(globus_compute_client, identity_id, database, logger):
+    endpoints = database.get_endpoints(identity_id=identity_id)
     get_partitions_func_id = globus_compute_client.register_function(get_partitions)
     for endpoint in endpoints:
         endpoint_uuid = endpoint.endpoint_uuid
@@ -56,15 +56,15 @@ def load_endpoints_partitions(globus_compute_client, user_id, temp_database, log
             if not partition:
                 partition_list.remove(partition)
         logger.info(f"Partitions output: {partition_list}")
-        temp_database.save_partition(
-            user_id=user_id,
+        database.save_partition(
+            identity_id=identity_id,
             endpoint_uuid=endpoint_uuid,
             partitions=partition_list,
         )
     return
 
-def load_endpoints_accounts(globus_compute_client, user_id, temp_database, logger):
-    endpoints = temp_database.get_endpoints(user_id=user_id)
+def load_endpoints_accounts(globus_compute_client, identity_id, database, logger):
+    endpoints = database.get_endpoints(identity_id=identity_id)
     accounts_func_id = globus_compute_client.register_function(get_accounts)
     for endpoint in endpoints:
         endpoint_uuid = endpoint.endpoint_uuid
@@ -84,8 +84,8 @@ def load_endpoints_accounts(globus_compute_client, user_id, temp_database, logge
             if not account:
                 account_list.remove(account)
         logger.info(f"Accounts output: {account_list}")
-        temp_database.save_accounts(
-            user_id=user_id,
+        database.save_accounts(
+            identity_id=identity_id,
             endpoint_uuid=endpoint_uuid,
             accounts=account_list,
         )

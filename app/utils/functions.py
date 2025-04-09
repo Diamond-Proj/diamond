@@ -52,7 +52,13 @@ cat << EOF > test.submit
 #SBATCH --output={location}/{container_name}_log.stdout
 #SBATCH --error={location}/{container_name}_log.stderr
 #SBATCH --nodes=1
-{slurm_commands}  
+#SBATCH --time=00:10:00
+#SBATCH --ntasks-per-node=1
+#SBATCH --exclusive
+#SBATCH --partition={partition}  
+#SBATCH --account={account}
+
+{sc_config_commands}
 echo $PWD
 srun apptainer build {location}/{container_name}.sif {location}/{container_name}.def
 
@@ -92,14 +98,15 @@ cat << EOF > diamond_task.submit
 #SBATCH --output={log_path}/{task_name}.stdout
 #SBATCH --error={log_path}/{task_name}.stderr
 #SBATCH --nodes={num_of_nodes}
-#SBATCH --time=00:30:00
+#SBATCH --time=01:00:00
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
 #SBATCH --partition={partition}
 #SBATCH --account={account}
 
+{sc_config_commands}
 echo $PWD                       
-srun apptainer run --bind={log_path},{container_path} {container} {task}
+srun apptainer exec --nv {container} {task}
 
 EOF
 

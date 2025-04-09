@@ -2,13 +2,8 @@ from datetime import datetime
 from app.database.db import db
 
 
-TEMP_BIND_KEY = 'temp_db'
-
 class Endpoints(db.Model):
-    __bind_key__ = TEMP_BIND_KEY
-    __tablename__ = 'endpoints' 
-    
-    user_id = db.Column(db.String(255), primary_key=True)
+    identity_id = db.Column(db.String(255), primary_key=True)
     endpoint_name = db.Column(db.String(255), nullable=False)
     endpoint_host = db.Column(db.String(255), nullable=False)
     endpoint_uuid = db.Column(db.String(255), primary_key=True)
@@ -17,14 +12,14 @@ class Endpoints(db.Model):
 
     def __init__(
             self,
-            user_id,
+            identity_id,
             endpoint_name,
             endpoint_host,
             endpoint_uuid,
             partitions=None,
             accounts=None,
         ):
-        self.user_id = user_id
+        self.identity_id = identity_id
         self.endpoint_name = endpoint_name
         self.endpoint_host = endpoint_host
         self.endpoint_uuid = endpoint_uuid
