@@ -156,7 +156,6 @@ def diamond_endpoint_image_builder():
     function_id = globus_compute_client.register_function(
         container_builder_wrapper_shell
     )
-    logger.info("*****")
     container_task_id = globus_compute_client.run(
         container_name=name,
         base_image=base_image,
@@ -276,7 +275,6 @@ def get_build_log():
 def get_containers():
     identity_id = request.cookies.get("primary_identity")
     logger.info(f"Loading containers for identity_id: {identity_id}")
-    globus_compute_client = initialize_globus_compute_client()
     containers = database.load_containers(identity_id=identity_id)
     containers_data = {}
     for container in containers:
@@ -284,35 +282,9 @@ def get_containers():
         container_task_id = container.container_task_id
         name = container.name
 
-        endpoint_id = container.endpoint_id
-        container_status_func_id = globus_compute_client.register_function(
-            get_container_status
-        )
-        container_status_task_id = globus_compute_client.run(
-            endpoint_id=endpoint_id, function_id=container_status_func_id, name=name
-        )
-        container_status_task_status = globus_compute_client.get_task(
-            container_status_task_id
-        )
-        while container_status_task_status["pending"]:
-            time.sleep(2)
-            container_status_task_status = globus_compute_client.get_task(
-                container_status_task_id
-            )
-            continue
-        container_status = globus_compute_client.get_result(
-            container_status_task_id
-        ).stdout
-        logger.info(f"container_status: {container_status}")
-        if container_status == "":
-            container_status = container.container_status
-        else:
-            container_status = container_status
-            database.update_container_status(container_task_id, container_status)
-
         containers_data[name] = {
             "container_task_id": container_task_id,
-            "status": container_status,
+            "status": "",
             "base_image": container.base_image,
             "location": container.location,
         }
