@@ -4,6 +4,7 @@ from datetime import datetime
 from flask import jsonify, redirect, request
 
 from . import app, database, logger
+from .utils.data_prep import parallel_load_endpoints_data, register_active_endpoints
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
@@ -14,12 +15,6 @@ from .utils.functions import (
     submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client
-from .utils.data_prep import (
-    register_active_endpoints,
-    load_endpoints_partitions,
-    load_endpoints_accounts,
-)
-
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
@@ -46,7 +41,7 @@ def healthcheck():
         200,
     )
 
-    
+
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
 def is_authenticated():
@@ -57,10 +52,18 @@ def is_authenticated():
 def diamond_data_prep():
     globus_compute_client = initialize_globus_compute_client()
     identity_id = request.cookies.get("primary_identity")
-    register_active_endpoints(globus_compute_client, identity_id, database, logger)
-    load_endpoints_partitions(globus_compute_client, identity_id, database, logger)
-    load_endpoints_accounts(globus_compute_client, identity_id, database, logger)
-    return jsonify({"status": "success"}), 200
+
+    # Register endpoints and get active endpoints in one step
+    active_endpoints = register_active_endpoints(
+        globus_compute_client, identity_id, database, logger
+    )
+
+    # Parallelize fetching partitions and accounts
+    parallel_load_endpoints_data(
+        active_endpoints, globus_compute_client, identity_id, database, logger
+    )
+
+    return jsonify({"status": "success", "endpoints": active_endpoints}), 200
 
 
 @app.route("/api/list_active_endpoints", methods=["GET"])
@@ -69,11 +72,13 @@ def diamond_list_active_endpoints():
     identity_id = request.cookies.get("primary_identity")
     active_endpoints = []
     for endpoint in database.get_endpoints(identity_id=identity_id):
-            active_endpoints.append({
+        active_endpoints.append(
+            {
                 "endpoint_name": endpoint.endpoint_name,
                 "endpoint_uuid": endpoint.endpoint_uuid,
                 "endpoint_host": endpoint.endpoint_host,
-            })
+            }
+        )
     return active_endpoints
 
 
@@ -112,7 +117,8 @@ def diamond_endpoint_image_builder():
     partition = request.json.get("partition")
     identity_id = request.cookies.get("primary_identity")
 
-    logger.info(f""" Creating container with the following parameters:
+    logger.info(
+        f""" Creating container with the following parameters:
         endpoint_id: {endpoint_id}
         container_name: {name}
         base_image: {base_image}
@@ -122,7 +128,8 @@ def diamond_endpoint_image_builder():
         location: {location}
         account: {account}
         partition: {partition}
-        identity_id: {identity_id}""")
+        identity_id: {identity_id}"""
+    )
     # First we create the def file using ShellFunction.
     globus_compute_client = initialize_globus_compute_client()
     def_file_creation_function_id = globus_compute_client.register_function(
