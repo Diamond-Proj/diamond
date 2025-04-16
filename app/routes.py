@@ -1,10 +1,13 @@
 import time
 from datetime import datetime
+import urllib.parse
+from datetime import datetime
 
+import globus_sdk
 from flask import jsonify, redirect, request
 
 from . import app, database, logger
-from .utils.data_prep import register_all_endpoints, load_accounts_partitions
+from .utils.data_prep import load_accounts_partitions, register_all_endpoints
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
@@ -15,6 +18,7 @@ from .utils.functions import (
     submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client
+from .utils.transfer import get_transfer_client
 from .utils.utils import get_git_info
 
 HOST = app.config.get("HOST")
@@ -39,14 +43,26 @@ def home():
 def healthcheck():
     """Health check endpoint."""
     logger.info("Health check route")
-    
+
     # Get git information
     git_info = get_git_info()
     if git_info["commit_sha"] == "unknown":
-        return jsonify({"status": "unhealthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 500
+        return jsonify(
+            {
+                "status": "unhealthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "git": git_info,
+            }
+        ), 500
     else:
-        return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 200
-    
+        return jsonify(
+            {
+                "status": "healthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "git": git_info,
+            }
+        ), 200
+
 
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
@@ -74,8 +90,16 @@ def diamond_load_accounts_partitions():
     identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.json.get("endpoint_uuid")
     globus_compute_client = initialize_globus_compute_client()
-    account_list, partition_list = load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globus_compute_client)
-    return jsonify({"status": "success", "account_list": account_list, "partition_list": partition_list}), 200
+    account_list, partition_list = load_accounts_partitions(
+        endpoint_uuid, identity_id, database, logger, globus_compute_client
+    )
+    return jsonify(
+        {
+            "status": "success",
+            "account_list": account_list,
+            "partition_list": partition_list,
+        }
+    ), 200
 
 
 @app.route("/api/list_all_endpoints", methods=["GET"])
@@ -93,6 +117,7 @@ def diamond_list_all_endpoints():
             }
         )
     return all_endpoints
+
 
 @app.route("/api/list_active_endpoints", methods=["GET"])
 @authenticated
@@ -112,6 +137,103 @@ def diamond_list_active_endpoints():
         else:
             continue
     return active_endpoints
+
+
+@app.route("/api/transfers", methods=["GET"])
+@authenticated
+def list_transfer_tasks():
+    """List the authenticated user's current transfer tasks."""
+    try:
+        transfer_client, error_response = get_transfer_client(request)
+        if error_response:
+            return jsonify(error_response[0]), error_response[1]
+
+        assert transfer_client is not None
+
+        # Get current transfer tasks prefixed with "Diamond:" label
+        tasks = []
+        for task in transfer_client.task_list(
+            filter="status:ACTIVE,INACTIVE/label:~Diamond:*"
+        ):
+            tasks.append(task)
+
+        logger.info(f"Found {len(tasks)} Diamond transfer tasks")
+        return jsonify(tasks)
+
+    except Exception as e:
+        logger.error(f"Error listing active transfer tasks: {e}")
+        return jsonify({"error": str(e)}), 500
+
+
+@app.route("/api/transfers", methods=["POST"])
+@authenticated
+def initiate_transfer():
+    """Initiate a Globus transfer between two endpoints on behalf of the authenticated user.
+
+    Expected JSON body:
+    {
+        "source_endpoint": "source_endpoint_id",
+        "destination_endpoint": "destination_endpoint_id",
+        "source_path": "source_path",
+        "destination_path": "destination_path",
+        "label": "optional_label"
+    }
+
+    (Following the same format as the Globus Transfer API)
+    """
+    try:
+        transfer_client, error_response = get_transfer_client(request)
+        if error_response:
+            return jsonify(error_response[0]), error_response[1]
+
+        assert transfer_client is not None
+
+        data = request.get_json()
+        if not data:
+            return jsonify({"error": "No JSON data provided"}), 400
+
+        required_fields = [
+            "source_endpoint",
+            "destination_endpoint",
+            "source_path",
+            "destination_path",
+        ]
+        for field in required_fields:
+            if field not in data:
+                return jsonify({"error": f"Missing required field: {field}"}), 400
+
+        # Get the user's identity ID from cookies
+        identity_id = request.cookies.get("primary_identity")
+        if not identity_id:
+            return jsonify({"error": "No identity ID found in cookies"}), 400
+
+        source, destination = data["source_endpoint"], data["destination_endpoint"]
+
+        transfer_data = globus_sdk.TransferData(
+            source_endpoint=source,
+            destination_endpoint=destination,
+            label=f"Diamond:{source}->{destination}",  # label task as diamond-related
+        )
+        transfer_data.add_item(
+            source_path=data["source_path"], destination_path=data["destination_path"]
+        )
+
+        transfer_result = transfer_client.submit_transfer(transfer_data)
+
+        return jsonify(
+            {
+                "message": "Transfer initiated successfully",
+                "task_id": transfer_result["task_id"],
+            }
+        ), 200
+
+    except globus_sdk.GlobusAPIError as e:
+        logger.error(f"Globus API error: {str(e)}")
+        return jsonify({"error": f"Globus API error: {str(e)}"}), 400
+    except Exception as e:
+        logger.error(f"Error initiating transfer: {str(e)}")
+        return jsonify({"error": f"Error initiating transfer: {str(e)}"}), 500
+
 
 @app.route("/api/list_partitions", methods=["POST"])
 @authenticated
@@ -136,7 +258,6 @@ def diamond_get_accounts():
 @app.route("/api/image_builder", methods=["POST"])
 @authenticated
 def diamond_endpoint_image_builder():
-
     endpoint_id = request.json.get("endpoint")
     name = request.json.get("name")
     base_image = request.json.get("base_image")
