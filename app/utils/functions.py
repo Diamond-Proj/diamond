@@ -49,8 +49,8 @@ cat << EOF > test.submit
 #!/bin/bash
 
 #SBATCH --job-name={container_name}
-#SBATCH --output={location}/{container_name}_apptainer_build_log.stdout
-#SBATCH --error={location}/{container_name}_apptainer_build_log.stderr
+#SBATCH --output={location}/{container_name}_log.stdout
+#SBATCH --error={location}/{container_name}_log.stderr
 #SBATCH --nodes=1
 #SBATCH --time=00:10:00
 #SBATCH --ntasks-per-node=1
@@ -95,8 +95,8 @@ cat << EOF > diamond_task.submit
 #!/bin/bash
 
 #SBATCH --job-name={task_name}
-#SBATCH --output={log_path}/{task_name}_task_log.stdout
-#SBATCH --error={log_path}/{task_name}_task_log.stderr
+#SBATCH --output={log_path}/{task_name}.stdout
+#SBATCH --error={log_path}/{task_name}.stderr
 #SBATCH --nodes={num_of_nodes}
 #SBATCH --time=01:00:00
 #SBATCH --ntasks-per-node=1
