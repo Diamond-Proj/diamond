@@ -316,6 +316,7 @@ def diamond_endpoint_submit_job():
     task_name = request.json.get("taskName")
     partition = request.json.get("partition")
     account = request.json.get("account")
+    reservation = request.json.get("reservation")
     container = request.json.get("container")
     log_path = request.json.get("log_path")
     task = request.json.get("task")
@@ -325,6 +326,8 @@ def diamond_endpoint_submit_job():
         num_of_nodes = 1
     if task is None:
         task = ""
+    if reservation:
+        reservation = "--reservation=" + reservation
 
     container_path = database.get_container_path_by_name(container)
     logger.info(
@@ -339,6 +342,7 @@ def diamond_endpoint_submit_job():
     task_id = globus_compute_client.run(
         partition=partition,
         account=account,
+        reservation=reservation,
         container=container_path + "/" + container + ".sif",
         container_path=container_path,
         task=task,
@@ -352,6 +356,7 @@ def diamond_endpoint_submit_job():
     # Wait for submit task to complete.
     submit_task_status = globus_compute_client.get_task(task_id)
     logger.info(f"submit_task_status: {submit_task_status}")
+    logger.info(f"reservation: {reservation}")
     while submit_task_status["pending"]:
         logger.info("submit_task_status", submit_task_status)
         time.sleep(2)

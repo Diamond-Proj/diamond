@@ -110,6 +110,6 @@ srun apptainer exec --nv {container} {task}
 
 EOF
 
-sbatch $PWD/diamond_task.submit
+sbatch {reservation} $PWD/diamond_task.submit
 """
 )
