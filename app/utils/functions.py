@@ -52,7 +52,7 @@ cat << EOF > test.submit
 #SBATCH --output={location}/{container_name}_log.stdout
 #SBATCH --error={location}/{container_name}_log.stderr
 #SBATCH --nodes=1
-#SBATCH --time=00:10:00
+#SBATCH --time=00:30:00
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
 #SBATCH --partition={partition}  
