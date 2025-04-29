@@ -114,6 +114,7 @@ def diamond_endpoint_image_builder():
     commands = request.json.get("commands")
     location = request.json.get("location")
     account = request.json.get("account")
+    reservation = request.json.get("reservation")
     partition = request.json.get("partition")
     identity_id = request.cookies.get("primary_identity")
 
@@ -127,6 +128,7 @@ def diamond_endpoint_image_builder():
         commands: {commands}
         location: {location}
         account: {account}
+        reservation: {reservation}
         partition: {partition}
         identity_id: {identity_id}"""
     )
@@ -160,6 +162,8 @@ def diamond_endpoint_image_builder():
     sc_config_commands = ""
     if database.get_endpoint_host(endpoint_uuid=endpoint_id) == "tacc-frontera":
         sc_config_commands = "module load tacc-apptainer"
+    if reservation:
+        reservation = "--reservation=" + reservation
     function_id = globus_compute_client.register_function(
         container_builder_wrapper_shell
     )
@@ -170,6 +174,7 @@ def diamond_endpoint_image_builder():
         endpoint_id=endpoint_id,
         partition=partition,
         account=account,
+        reservation=reservation,
         sc_config_commands=sc_config_commands,
         function_id=function_id,
     )

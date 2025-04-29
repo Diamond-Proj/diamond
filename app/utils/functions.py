@@ -64,7 +64,7 @@ srun apptainer build {location}/{container_name}.sif {location}/{container_name}
 
 EOF
 
-sbatch $PWD/test.submit
+sbatch {reservation} $PWD/test.submit
 echo "SHELL ECHO"
 """
 )
