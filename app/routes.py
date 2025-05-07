@@ -4,13 +4,12 @@ from datetime import datetime
 from flask import jsonify, redirect, request
 
 from . import app, database, logger
+from .utils.data_prep import parallel_load_endpoints_data, register_active_endpoints
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
     container_builder_wrapper_shell,
-    get_accounts,
     get_container_status,
-    get_partitions,
     get_task_status,
     log_reader_wrapper,
     submit_task,
@@ -42,89 +41,64 @@ def healthcheck():
         200,
     )
 
-    
+
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
 def is_authenticated():
-    # log.info(f"cookies in backend: {request.cookies}")
-    # log.info(f"session in backend: {session}")
     return jsonify({"is_authenticated": True})
+
+
+@app.route("/api/data_prep", methods=["POST"])
+def diamond_data_prep():
+    globus_compute_client = initialize_globus_compute_client()
+    identity_id = request.cookies.get("primary_identity")
+
+    # Register endpoints and get active endpoints in one step
+    active_endpoints = register_active_endpoints(
+        globus_compute_client, identity_id, database, logger
+    )
+
+    # Parallelize fetching partitions and accounts
+    parallel_load_endpoints_data(
+        active_endpoints, globus_compute_client, identity_id, database, logger
+    )
+
+    return jsonify({"status": "success", "endpoints": active_endpoints}), 200
 
 
 @app.route("/api/list_active_endpoints", methods=["GET"])
 @authenticated
 def diamond_list_active_endpoints():
-    globus_compute_client = initialize_globus_compute_client()
+    identity_id = request.cookies.get("primary_identity")
     active_endpoints = []
-    endpoints = globus_compute_client.get_endpoints()
-    for endpoint in endpoints:
-        endpoint_uuid = endpoint["uuid"]
-        try:
-            endpoint_status = globus_compute_client.get_endpoint_status(
-                endpoint_uuid=endpoint_uuid
-            )["status"]
-        except Exception as e:
-            logger.error(
-                f"Error getting endpoint status for endpoint {endpoint['name']}: {e}"
-            )
-            continue
-        if endpoint_status == "online":
-            active_endpoints.append(
-                {"endpoint_name": endpoint["name"], "endpoint_uuid": endpoint_uuid}
-            )
-    logger.info(f"active_endpoints: {active_endpoints}")
+    for endpoint in database.get_endpoints(identity_id=identity_id):
+        active_endpoints.append(
+            {
+                "endpoint_name": endpoint.endpoint_name,
+                "endpoint_uuid": endpoint.endpoint_uuid,
+                "endpoint_host": endpoint.endpoint_host,
+            }
+        )
     return active_endpoints
 
 
 @app.route("/api/list_partitions", methods=["POST"])
 @authenticated
 def diamond_get_partitions():
-    endpoint_id = request.json.get("endpoint")
-    logger.info(f"partitions endpoint_id: {endpoint_id}")
-    globus_compute_client = initialize_globus_compute_client()
-    partitions_func_id = globus_compute_client.register_function(get_partitions)
-    partitions_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_id,
-        function_id=partitions_func_id,
+    partition_list = database.get_partitions(
+        identity_id=request.cookies.get("primary_identity"),
+        endpoint_uuid=request.json.get("endpoint"),
     )
-    partitions_task_status = globus_compute_client.get_task(partitions_task_id)
-    while partitions_task_status["pending"]:
-        time.sleep(2)
-        partitions_task_status = globus_compute_client.get_task(partitions_task_id)
-        continue
-    partitions_result = globus_compute_client.get_result(partitions_task_id)
-    partitions_output = partitions_result.stdout
-    partition_list = partitions_output.split("\n")
-    for partition in partition_list:
-        if not partition:
-            partition_list.remove(partition)
-    logger.info(f"partitions: {partition_list}")
     return jsonify(partition_list)
 
 
 @app.route("/api/list_accounts", methods=["POST"])
 @authenticated
 def diamond_get_accounts():
-    endpoint_id = request.json.get("endpoint")
-    logger.info(f"endpoint_id: {endpoint_id}")
-    globus_compute_client = initialize_globus_compute_client()
-    accounts_func_id = globus_compute_client.register_function(get_accounts)
-    accounts_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_id,
-        function_id=accounts_func_id,
+    account_list = database.get_accounts(
+        identity_id=request.cookies.get("primary_identity"),
+        endpoint_uuid=request.json.get("endpoint"),
     )
-    accounts_task_status = globus_compute_client.get_task(accounts_task_id)
-    while accounts_task_status["pending"]:
-        time.sleep(2)
-        accounts_task_status = globus_compute_client.get_task(accounts_task_id)
-        continue
-    accounts = globus_compute_client.get_result(accounts_task_id)
-    accounts_output = accounts.stdout
-    account_list = accounts_output.split("\n")
-    for account in account_list:
-        if not account:
-            account_list.remove(account)
-    logger.info(f"accounts: {account_list}")
     return jsonify(account_list)
 
 
@@ -134,34 +108,30 @@ def diamond_endpoint_image_builder():
 
     endpoint_id = request.json.get("endpoint")
     name = request.json.get("name")
-    # name = f"image-{endpoint_id}-v{datetime.now().strftime('%Y%m%d%H%M%S')}"
     base_image = request.json.get("base_image")
     dependencies = request.json.get("dependencies")
     environment = request.json.get("environment")
     commands = request.json.get("commands")
     location = request.json.get("location")
     account = request.json.get("account")
-    partitions = request.json.get("partition")
+    reservation = request.json.get("reservation")
+    partition = request.json.get("partition")
     identity_id = request.cookies.get("primary_identity")
 
-    logger.info(f"endpoint_id: {endpoint_id}")
-    logger.info(f"container_name: {name}")
-    logger.info(f"base_image: {base_image}")
-    logger.info(f"dependencies: {dependencies}")
-    logger.info(f"environment: {environment}")
-    logger.info(f"commands: {commands}")
-    logger.info(f"location: {location}")
-    logger.info(f"account: {account}")
-    logger.info(f"partitions: {partitions}")
-    logger.info(f"identity_id: {identity_id}")
-    slurm_commands = f"""
-#SBATCH --time=00:10:00
-#SBATCH --ntasks-per-node=1
-#SBATCH --exclusive
-#SBATCH --partition={partitions}  
-#SBATCH --account={account}
-"""
-
+    logger.info(
+        f""" Creating container with the following parameters:
+        endpoint_id: {endpoint_id}
+        container_name: {name}
+        base_image: {base_image}
+        dependencies: {dependencies}
+        environment: {environment}
+        commands: {commands}
+        location: {location}
+        account: {account}
+        reservation: {reservation}
+        partition: {partition}
+        identity_id: {identity_id}"""
+    )
     # First we create the def file using ShellFunction.
     globus_compute_client = initialize_globus_compute_client()
     def_file_creation_function_id = globus_compute_client.register_function(
@@ -189,6 +159,11 @@ def diamond_endpoint_image_builder():
         continue
 
     # Then we create the container using ShellFunction with SBATCH commands.
+    sc_config_commands = ""
+    if database.get_endpoint_host(endpoint_uuid=endpoint_id) == "tacc-frontera":
+        sc_config_commands = "module load tacc-apptainer"
+    if reservation:
+        reservation = "--reservation=" + reservation
     function_id = globus_compute_client.register_function(
         container_builder_wrapper_shell
     )
@@ -197,17 +172,12 @@ def diamond_endpoint_image_builder():
         base_image=base_image,
         location=location,
         endpoint_id=endpoint_id,
+        partition=partition,
+        account=account,
+        reservation=reservation,
+        sc_config_commands=sc_config_commands,
         function_id=function_id,
-        slurm_commands=slurm_commands,
     )
-    # Output is available at {location}/{base_image}_log.stdout
-    # container_task_status = globus_compute_client.get_task(container_task_id)
-    # print("container_builder_wrapper_shell" , container_task_status)
-    # while (container_task_status["pending"]):
-    #     print("container_builder_wrapper_shell" , container_task_status)
-    #     time.sleep(10)
-    #     container_task_status = globus_compute_client.get_task(container_task_id)
-    #     continue
 
     database.save_container(
         container_task_id=container_task_id,
@@ -317,7 +287,6 @@ def get_build_log():
 def get_containers():
     identity_id = request.cookies.get("primary_identity")
     logger.info(f"Loading containers for identity_id: {identity_id}")
-    globus_compute_client = initialize_globus_compute_client()
     containers = database.load_containers(identity_id=identity_id)
     containers_data = {}
     for container in containers:
@@ -325,35 +294,9 @@ def get_containers():
         container_task_id = container.container_task_id
         name = container.name
 
-        endpoint_id = container.endpoint_id
-        container_status_func_id = globus_compute_client.register_function(
-            get_container_status
-        )
-        container_status_task_id = globus_compute_client.run(
-            endpoint_id=endpoint_id, function_id=container_status_func_id, name=name
-        )
-        container_status_task_status = globus_compute_client.get_task(
-            container_status_task_id
-        )
-        while container_status_task_status["pending"]:
-            time.sleep(2)
-            container_status_task_status = globus_compute_client.get_task(
-                container_status_task_id
-            )
-            continue
-        container_status = globus_compute_client.get_result(
-            container_status_task_id
-        ).stdout
-        logger.info(f"container_status: {container_status}")
-        if container_status == "":
-            container_status = container.container_status
-        else:
-            container_status = container_status
-            database.update_container_status(container_task_id, container_status)
-
         containers_data[name] = {
             "container_task_id": container_task_id,
-            "status": container_status,
+            "status": "",
             "base_image": container.base_image,
             "location": container.location,
         }
@@ -378,6 +321,7 @@ def diamond_endpoint_submit_job():
     task_name = request.json.get("taskName")
     partition = request.json.get("partition")
     account = request.json.get("account")
+    reservation = request.json.get("reservation")
     container = request.json.get("container")
     log_path = request.json.get("log_path")
     task = request.json.get("task")
@@ -387,6 +331,8 @@ def diamond_endpoint_submit_job():
         num_of_nodes = 1
     if task is None:
         task = ""
+    if reservation:
+        reservation = "--reservation=" + reservation
 
     container_path = database.get_container_path_by_name(container)
     logger.info(
@@ -394,12 +340,14 @@ def diamond_endpoint_submit_job():
     )
 
     globus_compute_client = initialize_globus_compute_client()
-    # globus_compute_executor = GlobusComputeExecutor(client=globus_compute_client, endpoint_id=endpoint_id)
-
     function_id = globus_compute_client.register_function(submit_task)
+    sc_config_commands = ""
+    if database.get_endpoint_host(endpoint_uuid=endpoint_id) == "tacc-frontera":
+        sc_config_commands = "module load tacc-apptainer"
     task_id = globus_compute_client.run(
         partition=partition,
         account=account,
+        reservation=reservation,
         container=container_path + "/" + container + ".sif",
         container_path=container_path,
         task=task,
@@ -407,27 +355,18 @@ def diamond_endpoint_submit_job():
         num_of_nodes=num_of_nodes,
         task_name=task_name,
         endpoint_id=endpoint_id,
+        sc_config_commands=sc_config_commands,
         function_id=function_id,
     )
     # Wait for submit task to complete.
     submit_task_status = globus_compute_client.get_task(task_id)
     logger.info(f"submit_task_status: {submit_task_status}")
+    logger.info(f"reservation: {reservation}")
     while submit_task_status["pending"]:
         logger.info("submit_task_status", submit_task_status)
-        time.sleep(10)
+        time.sleep(2)
         submit_task_status = globus_compute_client.get_task(task_id)
         continue
-
-    # fu = globus_compute_executor.submit(
-    #     submit_task,
-    #     partition=partition,
-    #     container=container_path + "/" + container + ".sif",
-    #     task=task,
-    #     log_path=log_path,
-    #     num_of_nodes=num_of_nodes,
-    #     task_name=task_name)
-
-    # fu_stdout = fu.result().stdout
 
     database.save_task(
         task_id=task_id,

@@ -58,5 +58,6 @@ basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 with app.app_context():
     database = Database(app)
 
+
 # Import routes after app is created to avoid circular imports
 from . import routes

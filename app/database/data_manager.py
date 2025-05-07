@@ -6,6 +6,7 @@ from app.database.db import db
 from app.database.models.container import Container
 from app.database.models.profile import Profile
 from app.database.models.task import Task
+from app.database.models.endpoints import Endpoints
  
 import logging  # some issue with importing logger from app
 
@@ -135,3 +136,65 @@ class Database:
         logger.info(f"Deleting container: {container_task_id}")
         Container.query.filter_by(container_task_id=container_task_id).delete()
         db.session.commit()
+
+    def exists_endpoint(self, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+        return endpoint is not None
+
+    def save_endpoint(self, identity_id, endpoint_name, endpoint_host, endpoint_uuid):
+        logger.info(f"Saving endpoint: {endpoint_name}, {endpoint_host}, {endpoint_uuid}")
+        endpoint = Endpoints(
+            identity_id=identity_id,
+            endpoint_name=endpoint_name,
+            endpoint_host=endpoint_host,
+            endpoint_uuid=endpoint_uuid
+        )
+        db.session.merge(endpoint)
+        db.session.commit()
+    
+    def get_endpoints(self, identity_id):
+        return Endpoints.query.filter_by(identity_id=identity_id).all()
+    
+    def delete_endpoints(self, identity_id):
+        Endpoints.query.filter_by(identity_id=identity_id).delete()
+        db.session.commit()
+
+    def get_endpoint_host(self, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            return endpoint.endpoint_host
+        else:
+            logger.error(f"Endpoint {endpoint_uuid} not found")
+            return None
+
+    def save_partition(self, identity_id, endpoint_uuid, partitions):
+        endpoint = Endpoints.query.filter_by(identity_id=identity_id, endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            endpoint.partitions = partitions
+            db.session.commit()
+        else:
+            logger.error(f"Endpoint not found for user {identity_id} and UUID {endpoint_uuid}")
+
+    def get_partitions(self, identity_id, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(identity_id=identity_id, endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            return endpoint.partitions
+        else:
+            logger.error(f"Endpoint not found for user {identity_id} and UUID {endpoint_uuid}")
+            return None
+    
+    def save_accounts(self, identity_id, endpoint_uuid, accounts):
+        endpoint = Endpoints.query.filter_by(identity_id=identity_id, endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            endpoint.accounts = accounts
+            db.session.commit()
+        else:
+            logger.error(f"Endpoint not found for user {identity_id} and UUID {endpoint_uuid}")
+
+    def get_accounts(self, identity_id, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(identity_id=identity_id, endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            return endpoint.accounts
+        else:
+            logger.error(f"Endpoint not found for user {identity_id} and UUID {endpoint_uuid}")
+            return None
