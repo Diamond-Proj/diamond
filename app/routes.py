@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import jsonify, redirect, request
 
 from . import app, database, logger
-from .utils.data_prep import parallel_load_endpoints_data, register_active_endpoints
+from .utils.data_prep import parallel_load_endpoints_data, register_all_endpoints
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
@@ -53,10 +53,11 @@ def diamond_data_prep():
     globus_compute_client = initialize_globus_compute_client()
     identity_id = request.cookies.get("primary_identity")
 
-    # Register endpoints and get active endpoints in one step
-    active_endpoints = register_active_endpoints(
+    # Register endpoints and get all endpoints in one step
+    all_endpoints = register_all_endpoints(
         globus_compute_client, identity_id, database, logger
     )
+    active_endpoints = [endpoint for endpoint in all_endpoints if endpoint["endpoint_status"] == "online"]
 
     # Parallelize fetching partitions and accounts
     parallel_load_endpoints_data(
@@ -66,21 +67,40 @@ def diamond_data_prep():
     return jsonify({"status": "success", "endpoints": active_endpoints}), 200
 
 
+@app.route("/api/list_all_endpoints", methods=["GET"])
+@authenticated
+def diamond_list_all_endpoints():
+    identity_id = request.cookies.get("primary_identity")
+    all_endpoints = []
+    for endpoint in database.get_endpoints(identity_id=identity_id):
+        all_endpoints.append(
+            {
+                "endpoint_name": endpoint.endpoint_name,
+                "endpoint_uuid": endpoint.endpoint_uuid,
+                "endpoint_host": endpoint.endpoint_host,
+                "endpoint_status": endpoint.endpoint_status,
+            }
+        )
+    return all_endpoints
+
 @app.route("/api/list_active_endpoints", methods=["GET"])
 @authenticated
 def diamond_list_active_endpoints():
     identity_id = request.cookies.get("primary_identity")
     active_endpoints = []
     for endpoint in database.get_endpoints(identity_id=identity_id):
-        active_endpoints.append(
-            {
-                "endpoint_name": endpoint.endpoint_name,
-                "endpoint_uuid": endpoint.endpoint_uuid,
-                "endpoint_host": endpoint.endpoint_host,
-            }
-        )
+        if endpoint.endpoint_status == "online":
+            active_endpoints.append(
+                {
+                    "endpoint_name": endpoint.endpoint_name,
+                    "endpoint_uuid": endpoint.endpoint_uuid,
+                    "endpoint_host": endpoint.endpoint_host,
+                    "endpoint_status": endpoint.endpoint_status,
+                }
+            )
+        else:
+            continue
     return active_endpoints
-
 
 @app.route("/api/list_partitions", methods=["POST"])
 @authenticated
