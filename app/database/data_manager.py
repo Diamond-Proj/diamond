@@ -141,13 +141,14 @@ class Database:
         endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
         return endpoint is not None
 
-    def save_endpoint(self, identity_id, endpoint_name, endpoint_host, endpoint_uuid):
+    def save_endpoint(self, identity_id, endpoint_name, endpoint_host, endpoint_uuid, endpoint_status):
         logger.info(f"Saving endpoint: {endpoint_name}, {endpoint_host}, {endpoint_uuid}")
         endpoint = Endpoints(
             identity_id=identity_id,
             endpoint_name=endpoint_name,
             endpoint_host=endpoint_host,
-            endpoint_uuid=endpoint_uuid
+            endpoint_uuid=endpoint_uuid,
+            endpoint_status=endpoint_status,
         )
         db.session.merge(endpoint)
         db.session.commit()
@@ -166,6 +167,22 @@ class Database:
         else:
             logger.error(f"Endpoint {endpoint_uuid} not found")
             return None
+        
+    def get_endpoint_status(self, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            return endpoint.endpoint_status
+        else:
+            logger.error(f"Endpoint {endpoint_uuid} not found")
+            return None
+    
+    def update_endpoint_status(self, endpoint_uuid, endpoint_status):
+        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            endpoint.endpoint_status = endpoint_status
+            db.session.commit()
+        else:
+            logger.error(f"Endpoint {endpoint_uuid} not found")
 
     def save_partition(self, identity_id, endpoint_uuid, partitions):
         endpoint = Endpoints.query.filter_by(identity_id=identity_id, endpoint_uuid=endpoint_uuid).first()

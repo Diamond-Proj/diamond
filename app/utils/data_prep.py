@@ -5,10 +5,10 @@ from .functions import get_accounts, get_partitions
 from .parsers import resolve_host
 
 
-def register_active_endpoints(globus_compute_client, identity_id, database, logger):
-    logger.info(f"Registering active endpoints for user: {identity_id}")
-    endpoints = globus_compute_client.get_endpoints()
-    active_endpoints = []
+def register_all_endpoints(globus_compute_client, identity_id, database, logger):
+    logger.info(f"Registering all endpoints for user: {identity_id}")
+    endpoints = globus_compute_client.get_endpoints() # get all endpoints owned by the user across all systems
+    all_endpoints = []
 
     for endpoint in endpoints:
         logger.info(f"Checking endpoint: {endpoint}")
@@ -18,32 +18,35 @@ def register_active_endpoints(globus_compute_client, identity_id, database, logg
             endpoint_status = globus_compute_client.get_endpoint_status(
                 endpoint_uuid=endpoint_uuid
             )["status"]
+            logger.info(f"Endpoint {endpoint_name} status: {endpoint_status}")
         except Exception as e:
             logger.error(
                 f"Error getting endpoint status for endpoint {endpoint_name}: {e}"
             )
             continue
-        if endpoint_status == "online":
-            endpoint_metadata = globus_compute_client.get_endpoint_metadata(
-                endpoint_uuid=endpoint_uuid
+        endpoint_metadata = globus_compute_client.get_endpoint_metadata(endpoint_uuid=endpoint_uuid)
+        endpoint_host = resolve_host(endpoint_metadata["hostname"])
+        if not database.exists_endpoint(endpoint_uuid=endpoint_uuid):
+            logger.info(f"Saving endpoint: {endpoint_name}")
+            database.save_endpoint(
+                identity_id=identity_id,
+                endpoint_name=endpoint_name,
+                endpoint_host=endpoint_host,
+                endpoint_uuid=endpoint_uuid,
+                endpoint_status=endpoint_status,
             )
-            endpoint_host = resolve_host(endpoint_metadata["hostname"])
-            if not database.exists_endpoint(endpoint_uuid=endpoint_uuid):
-                logger.info(f"Saving endpoint: {endpoint_uuid}")
-                database.save_endpoint(
-                    identity_id=identity_id,
-                    endpoint_name=endpoint_name,
-                    endpoint_host=endpoint_host,
-                    endpoint_uuid=endpoint_uuid,
-                )
-            active_endpoints.append(
-                {
-                    "endpoint_uuid": endpoint_uuid,
-                    "endpoint_name": endpoint_name,
-                    "endpoint_host": endpoint_host,
-                }
-            )
-    return active_endpoints
+        else:
+            logger.info(f"Endpoint {endpoint_name} already exists, updating status")
+            database.update_endpoint_status(endpoint_uuid=endpoint_uuid, endpoint_status=endpoint_status)
+        all_endpoints.append(
+            {
+                "endpoint_uuid": endpoint_uuid,
+                "endpoint_name": endpoint_name,
+                "endpoint_host": endpoint_host,
+                "endpoint_status": endpoint_status,
+            }
+        )
+    return all_endpoints
 
 
 def _get_endpoint_partitions(
