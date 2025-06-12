@@ -346,6 +346,7 @@ def diamond_endpoint_submit_job():
     log_path = request.json.get("log_path")
     task = request.json.get("task")
     num_of_nodes = request.json.get("num_of_nodes")
+    time_duration = request.json.get("time_duration")
     identity_id = request.cookies.get("primary_identity")
     if not num_of_nodes:
         num_of_nodes = 1
@@ -373,6 +374,7 @@ def diamond_endpoint_submit_job():
         task=task,
         log_path=log_path,
         num_of_nodes=num_of_nodes,
+        time_duration=time_duration,
         task_name=task_name,
         endpoint_id=endpoint_id,
         sc_config_commands=sc_config_commands,

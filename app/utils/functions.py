@@ -98,7 +98,7 @@ cat << EOF > diamond_task.submit
 #SBATCH --output={log_path}/{task_name}.stdout
 #SBATCH --error={log_path}/{task_name}.stderr
 #SBATCH --nodes={num_of_nodes}
-#SBATCH --time=01:00:00
+#SBATCH --time={time_duration}
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
 #SBATCH --partition={partition}
