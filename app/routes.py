@@ -15,6 +15,7 @@ from .utils.functions import (
     submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client
+from .utils.utils import get_git_info
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
@@ -36,8 +37,16 @@ def home():
 def healthcheck():
     """Health check endpoint."""
     logger.info("Health check route")
+    
+    # Get git information
+    git_info = get_git_info()
+    
     return (
-        jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()}),
+        jsonify({
+            "status": "healthy", 
+            "timestamp": datetime.utcnow().isoformat(),
+            "git": git_info
+        }),
         200,
     )
 

@@ -1,15 +1,48 @@
 import os
+import subprocess
 from datetime import datetime, timedelta
 from threading import Lock
 
 import globus_sdk
 import jwt
 from flask import current_app, request
+import logger
 
 try:
     from urllib.parse import urljoin, urlparse
 except ImportError:
     from urllib.parse import urljoin, urlparse
+
+
+def get_git_info():
+    """Get the latest git commit SHA and commit time from the main branch."""
+    try:
+        # Get the latest commit SHA from main branch
+        commit_sha = subprocess.check_output(
+            ["git", "rev-parse", "HEAD"], 
+            cwd=current_app.root_path, 
+            stderr=subprocess.PIPE,
+            text=True
+        ).strip()
+        
+        # Get the commit time
+        commit_time = subprocess.check_output(
+            ["git", "log", "-1", "--format=%cI", "HEAD"], 
+            cwd=current_app.root_path, 
+            stderr=subprocess.PIPE,
+            text=True
+        ).strip()
+        
+        return {
+            "commit_sha": commit_sha,
+            "commit_time": commit_time
+        }
+    except (subprocess.CalledProcessError, FileNotFoundError) as e:
+        logger.warning(f"Could not get git information: {e}")
+        return {
+            "commit_sha": "unknown",
+            "commit_time": "unknown"
+        }
 
 
 def load_portal_client():
