@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Check Backend Health
         run: |
-          HEALTH_URL="${{ inputs.endpoint_url }}/api/healthcheck"
+          HEALTH_URL="${{ inputs.endpoint_url || 'https://backend.diamondhpc.ai' }}/api/healthcheck"
           echo "Checking health at: $HEALTH_URL"
 
           # Make the health check request
@@ -40,8 +40,11 @@ jobs:
             exit 1
           fi
 
-      # - name: Notify on Failure
-      #   if: failure()
-      #   run: |
-      #     echo "Health check failed."
-      #     # TODO slack integration?
+      - name: Notify Slack on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2.1.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "🚨 *Diamond HPC Backend Health Check Failed*\n${{ inputs.endpoint_url || 'https://backend.diamondhpc.ai' }}/api/healthcheck\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
