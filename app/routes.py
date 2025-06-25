@@ -64,7 +64,7 @@ def diamond_register_all_endpoints():
 @app.route("/api/load_accounts_partitions", methods=["POST"])
 @authenticated
 def diamond_load_accounts_partitions():
-    """Load accounts and partitions for an endpoint"""
+    """Load accounts and partitions for an active endpoint"""
     identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.json.get("endpoint_uuid")
     globus_compute_client = initialize_globus_compute_client()
