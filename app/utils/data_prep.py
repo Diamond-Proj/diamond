@@ -87,59 +87,54 @@ def _get_endpoint_accounts(
     return endpoint_uuid, account_list
 
 
-def parallel_load_endpoints_data(
-    active_endpoints, globus_compute_client, identity_id, database, logger
-):
-    """Load partitions and accounts for endpoints in parallel"""
+def load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globus_compute_client):
+    """Load accounts and partitions for an endpoint"""
     get_partitions_func_id = globus_compute_client.register_function(get_partitions)
     accounts_func_id = globus_compute_client.register_function(get_accounts)
-
+    
     with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Start partition and account tasks in parallel
-        partition_futures = {
-            executor.submit(
-                _get_endpoint_partitions,
-                endpoint["endpoint_uuid"],
-                globus_compute_client,
-                get_partitions_func_id,
-                logger,
-            ): endpoint["endpoint_uuid"]
-            for endpoint in active_endpoints
-        }
+        # Start account and partition tasks in parallel
+        account_future = executor.submit(
+            _get_endpoint_accounts,
+            endpoint_uuid,
+            globus_compute_client,
+            accounts_func_id,
+            logger,
+        )
 
-        account_futures = {
-            executor.submit(
-                _get_endpoint_accounts,
-                endpoint["endpoint_uuid"],
-                globus_compute_client,
-                accounts_func_id,
-                logger,
-            ): endpoint["endpoint_uuid"]
-            for endpoint in active_endpoints
-        }
-
-        # Process partition results as they complete
-        for future in concurrent.futures.as_completed(partition_futures):
+        partition_future = executor.submit(
+            _get_endpoint_partitions,
+            endpoint_uuid,
+            globus_compute_client,
+            get_partitions_func_id,
+            logger,
+        )
+    
+        # Process results as they complete
+        partition_list = None
+        account_list = None
+        
+        for future in concurrent.futures.as_completed([partition_future, account_future]):
             try:
-                endpoint_uuid, partition_list = future.result()
-                database.save_partition(
-                    identity_id=identity_id,
-                    endpoint_uuid=endpoint_uuid,
-                    partitions=partition_list,
-                )
+                endpoint_uuid, result = future.result()
+                if future == account_future:
+                    account_list = result
+                    database.save_accounts(
+                        identity_id=identity_id,
+                        endpoint_uuid=endpoint_uuid,
+                        accounts=account_list,
+                    )
+                elif future == partition_future:
+                    partition_list = result
+                    database.save_partition(
+                        identity_id=identity_id,
+                        endpoint_uuid=endpoint_uuid,
+                        partitions=partition_list,
+                    )
+                else:
+                    logger.error(f"Unknown future: {future}")
             except Exception as e:
-                logger.error(f"Error processing partitions: {e}")
-
-        # Process account results as they complete
-        for future in concurrent.futures.as_completed(account_futures):
-            try:
-                endpoint_uuid, account_list = future.result()
-                database.save_accounts(
-                    identity_id=identity_id,
-                    endpoint_uuid=endpoint_uuid,
-                    accounts=account_list,
-                )
-            except Exception as e:
-                logger.error(f"Error processing accounts: {e}")
-
-    return True
+                logger.error(f"Error processing endpoint data with endpoint_uuid: {endpoint_uuid}: {e}")
+                raise
+    
+    return account_list, partition_list
