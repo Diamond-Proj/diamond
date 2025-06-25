@@ -16,32 +16,15 @@ except ImportError:
 
 def get_git_info():
     """Get the latest git commit SHA and commit time from the main branch."""
-    try:
-        # Get the latest commit SHA from main branch
-        commit_sha = subprocess.check_output(
-            ["git", "rev-parse", "HEAD"], 
-            cwd=current_app.root_path, 
-            stderr=subprocess.PIPE,
-            text=True
-        ).strip()
-        
-        # Get the commit time
-        commit_time = subprocess.check_output(
-            ["git", "log", "-1", "--format=%cI", "HEAD"], 
-            cwd=current_app.root_path, 
-            stderr=subprocess.PIPE,
-            text=True
-        ).strip()
-        
+    # Check if RAILWAY_GIT_COMMIT_SHA exists and is a string
+    railway_commit_sha = current_app.config.get("RAILWAY_GIT_COMMIT_SHA")
+    if railway_commit_sha and isinstance(railway_commit_sha, str):
         return {
-            "commit_sha": commit_sha,
-            "commit_time": commit_time
+            "commit_sha": railway_commit_sha
         }
-    except (subprocess.CalledProcessError, FileNotFoundError) as e:
-        logger.warning(f"Could not get git information: {e}")
+    else:
         return {
-            "commit_sha": "unknown",
-            "commit_time": "unknown"
+            "commit_sha": "unknown"
         }
 
 
