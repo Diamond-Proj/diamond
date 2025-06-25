@@ -6,12 +6,7 @@ from threading import Lock
 import globus_sdk
 import jwt
 from flask import current_app, request
-import logger
-
-try:
-    from urllib.parse import urljoin, urlparse
-except ImportError:
-    from urllib.parse import urljoin, urlparse
+from urllib.parse import urljoin, urlparse
 
 
 def get_git_info():
