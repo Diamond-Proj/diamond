@@ -15,14 +15,17 @@ from .utils.functions import (
     submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client
+from .utils.utils import get_git_info
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
 NEXT_URL = app.config.get("NEXT_URL")
+RAILWAY_GIT_COMMIT_SHA = app.config.get("RAILWAY_GIT_COMMIT_SHA")
 
 logger.info(f"HOST in routes.py: {HOST}")
 logger.info(f"AUTH_URL in routes.py: {AUTH_URL}")
 logger.info(f"NEXT_URL in routes.py: {NEXT_URL}")
+logger.info(f"RAILWAY_GIT_COMMIT_SHA in routes.py: {RAILWAY_GIT_COMMIT_SHA}")
 
 
 @app.route("/api/home", methods=["GET"])
@@ -36,11 +39,14 @@ def home():
 def healthcheck():
     """Health check endpoint."""
     logger.info("Health check route")
-    return (
-        jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat()}),
-        200,
-    )
-
+    
+    # Get git information
+    git_info = get_git_info()
+    if git_info["commit_sha"] == "unknown":
+        return jsonify({"status": "unhealthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 500
+    else:
+        return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 200
+    
 
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated

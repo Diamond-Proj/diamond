@@ -1,15 +1,22 @@
 import os
-from datetime import datetime, timedelta
 from threading import Lock
-
 import globus_sdk
-import jwt
 from flask import current_app, request
+from urllib.parse import urljoin, urlparse
 
-try:
-    from urllib.parse import urljoin, urlparse
-except ImportError:
-    from urllib.parse import urljoin, urlparse
+
+def get_git_info():
+    """Get the latest git commit SHA and commit time from the main branch."""
+    # Check if RAILWAY_GIT_COMMIT_SHA exists and is a string
+    railway_commit_sha = current_app.config.get("RAILWAY_GIT_COMMIT_SHA")
+    if railway_commit_sha and isinstance(railway_commit_sha, str) and len(railway_commit_sha) == 40:
+        return {
+            "commit_sha": railway_commit_sha
+        }
+    else:
+        return {
+            "commit_sha": "unknown"
+        }
 
 
 def load_portal_client():
