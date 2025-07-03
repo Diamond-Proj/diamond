@@ -4,7 +4,7 @@ from datetime import datetime
 from flask import jsonify, redirect, request
 
 from . import app, database, logger
-from .utils.data_prep import parallel_load_endpoints_data, register_all_endpoints
+from .utils.data_prep import register_all_endpoints, load_accounts_partitions
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
@@ -54,23 +54,28 @@ def is_authenticated():
     return jsonify({"is_authenticated": True})
 
 
-@app.route("/api/data_prep", methods=["POST"])
-def diamond_data_prep():
-    globus_compute_client = initialize_globus_compute_client()
+@app.route("/api/register_all_endpoints", methods=["POST"])
+@authenticated
+def diamond_register_all_endpoints():
+    """Register all endpoints for a user"""
     identity_id = request.cookies.get("primary_identity")
-
+    globus_compute_client = initialize_globus_compute_client()
     # Register endpoints and get all endpoints in one step
     all_endpoints = register_all_endpoints(
         globus_compute_client, identity_id, database, logger
     )
-    active_endpoints = [endpoint for endpoint in all_endpoints if endpoint["endpoint_status"] == "online"]
+    return jsonify({"status": "success", "endpoints": all_endpoints}), 200
 
-    # Parallelize fetching partitions and accounts
-    parallel_load_endpoints_data(
-        active_endpoints, globus_compute_client, identity_id, database, logger
-    )
 
-    return jsonify({"status": "success", "endpoints": active_endpoints}), 200
+@app.route("/api/load_accounts_partitions", methods=["POST"])
+@authenticated
+def diamond_load_accounts_partitions():
+    """Load accounts and partitions for an active endpoint"""
+    identity_id = request.cookies.get("primary_identity")
+    endpoint_uuid = request.json.get("endpoint_uuid")
+    globus_compute_client = initialize_globus_compute_client()
+    account_list, partition_list = load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globus_compute_client)
+    return jsonify({"status": "success", "account_list": account_list, "partition_list": partition_list}), 200
 
 
 @app.route("/api/list_all_endpoints", methods=["GET"])
