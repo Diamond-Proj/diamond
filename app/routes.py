@@ -124,11 +124,7 @@ def diamond_list_active_endpoints():
 def list_transfer_tasks():
     """List the authenticated user's current transfer tasks."""
     try:
-        transfer_client, error_response = get_transfer_client(request)
-        if error_response:
-            return jsonify(error_response[0]), error_response[1]
-
-        assert transfer_client is not None
+        transfer_client = get_transfer_client(request)
 
         # Get current transfer tasks prefixed with "Diamond:" label
         tasks = []
@@ -140,6 +136,9 @@ def list_transfer_tasks():
         logger.info(f"Found {len(tasks)} Diamond transfer tasks")
         return jsonify(tasks)
 
+    except globus_sdk.GlobusAPIError as e:
+        logger.error(f"Globus API error: {e}")
+        return jsonify({"error": str(e)}), e.http_status
     except Exception as e:
         logger.error(f"Error listing active transfer tasks: {e}")
         return jsonify({"error": str(e)}), 500
@@ -162,11 +161,7 @@ def initiate_transfer():
     (Following the same format as the Globus Transfer API)
     """
     try:
-        transfer_client, error_response = get_transfer_client(request)
-        if error_response:
-            return jsonify(error_response[0]), error_response[1]
-
-        assert transfer_client is not None
+        transfer_client = get_transfer_client(request)
 
         data = request.get_json()
         if not data:
@@ -209,7 +204,7 @@ def initiate_transfer():
 
     except globus_sdk.GlobusAPIError as e:
         logger.error(f"Globus API error: {str(e)}")
-        return jsonify({"error": f"Globus API error: {str(e)}"}), 400
+        return jsonify({"error": f"Globus API error: {str(e)}"}), e.http_status
     except Exception as e:
         logger.error(f"Error initiating transfer: {str(e)}")
         return jsonify({"error": f"Error initiating transfer: {str(e)}"}), 500
