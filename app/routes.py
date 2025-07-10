@@ -129,7 +129,7 @@ def list_transfer_tasks():
         # Get current transfer tasks prefixed with "Diamond:" label
         tasks = []
         for task in transfer_client.task_list(
-            filter="status:ACTIVE,INACTIVE/label:~Diamond:*"
+            filter="status:ACTIVE,INACTIVE,FAILED/label:~Diamond:*"
         ):
             tasks.append(task)
 
