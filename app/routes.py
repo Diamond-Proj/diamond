@@ -7,7 +7,7 @@ import globus_sdk
 from flask import jsonify, redirect, request
 
 from . import app, database, logger
-from .utils.data_prep import load_accounts_partitions, register_all_endpoints
+from .utils.data_prep import register_all_endpoints, load_accounts_partitions
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
@@ -43,26 +43,14 @@ def home():
 def healthcheck():
     """Health check endpoint."""
     logger.info("Health check route")
-
+    
     # Get git information
     git_info = get_git_info()
     if git_info["commit_sha"] == "unknown":
-        return jsonify(
-            {
-                "status": "unhealthy",
-                "timestamp": datetime.utcnow().isoformat(),
-                "git": git_info,
-            }
-        ), 500
+        return jsonify({"status": "unhealthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 500
     else:
-        return jsonify(
-            {
-                "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat(),
-                "git": git_info,
-            }
-        ), 200
-
+        return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 200
+    
 
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
@@ -90,16 +78,8 @@ def diamond_load_accounts_partitions():
     identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.json.get("endpoint_uuid")
     globus_compute_client = initialize_globus_compute_client()
-    account_list, partition_list = load_accounts_partitions(
-        endpoint_uuid, identity_id, database, logger, globus_compute_client
-    )
-    return jsonify(
-        {
-            "status": "success",
-            "account_list": account_list,
-            "partition_list": partition_list,
-        }
-    ), 200
+    account_list, partition_list = load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globus_compute_client)
+    return jsonify({"status": "success", "account_list": account_list, "partition_list": partition_list}), 200
 
 
 @app.route("/api/list_all_endpoints", methods=["GET"])
