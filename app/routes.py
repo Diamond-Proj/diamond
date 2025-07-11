@@ -46,10 +46,13 @@ def healthcheck():
     
     # Get git information
     git_info = get_git_info()
-    if git_info["commit_sha"] == "unknown":
-        return jsonify({"status": "unhealthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 500
-    else:
-        return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 200
+    return jsonify({"status": "unhealthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 500
+
+    # commenting out for testing
+    # if git_info["commit_sha"] == "unknown":
+    #     return jsonify({"status": "unhealthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 500
+    # else:
+    #     return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 200
     
 
 @app.route("/api/is_authenticated", methods=["GET"])
