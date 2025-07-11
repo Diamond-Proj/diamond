@@ -193,7 +193,7 @@ def diamond_endpoint_image_builder():
     sc_config_commands = ""
     if database.get_endpoint_host(endpoint_uuid=endpoint_id) == "tacc-frontera":
         sc_config_commands = "module load tacc-apptainer"
-    if reservation:
+    if reservation and reservation != "":
         reservation = "--reservation=" + reservation
     function_id = globus_compute_client.register_function(
         container_builder_wrapper_shell
@@ -363,7 +363,7 @@ def diamond_endpoint_submit_job():
         num_of_nodes = 1
     if task is None:
         task = ""
-    if reservation:
+    if reservation and reservation != "":
         reservation = "--reservation=" + reservation
 
     container_path = database.get_container_path_by_name(container)
