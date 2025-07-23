@@ -28,4 +28,4 @@ For eg.:
 - [ ] Create sub-issues if needed
 - [ ] Link to parent issue if applicable
 - [ ] Assign appropriate tags (`testing`, `infrastructure`)
-- [ ] Assign an owner -- defaults to core team
+- [ ] Assign an owner

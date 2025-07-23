@@ -29,4 +29,4 @@ Please confirm the PR meets the following requirements.
 - [ ] Relevant tags are added based on the types of changes.
 - [ ] Tests have been added to show the fix is effective or that the new feature works.
 - [ ] New and existing unit tests pass locally with the changes.
-- [ ] Docs have been updated and reviewed if relevant.
+- [ ] Reviewers and Assignees are assigned.
