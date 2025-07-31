@@ -1,13 +1,16 @@
 import concurrent.futures
 import time
+from globus_compute_sdk import Client as GlobusComputeClient
 
 from .functions import get_accounts, get_partitions
 from .parsers import resolve_host
 
 
-def register_all_endpoints(globus_compute_client, identity_id, database, logger):
+def register_all_endpoints(globus_compute_client: GlobusComputeClient, identity_id, database, logger):
     logger.info(f"Registering all endpoints for user: {identity_id}")
-    endpoints = globus_compute_client.get_endpoints() # get all endpoints owned by the user across all systems
+
+    # Specify role=Any to fetch MEPs in addition to those owned by the user
+    endpoints = globus_compute_client.get_endpoints(role='any')
     all_endpoints = []
 
     for endpoint in endpoints:
