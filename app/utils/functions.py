@@ -16,6 +16,9 @@ get_container_status = ShellFunction('squeue --name={name} -h -o "%T"')
 get_task_status = ShellFunction('squeue --name={task_name} -h -o "%T"')
 
 
+get_job_status = ShellFunction('sacct --jobs={job_id} --format=JobID,State --noheader')
+
+
 apptainer_def_file_creation = ShellFunction(
 """
 cat << EOF > {location}/{container_name}.def
@@ -91,6 +94,16 @@ def log_reader_wrapper(log_file_path):
 
 submit_task = ShellFunction(
 """
+# Create log directory if it doesn't exist
+mkdir -p {log_path}
+
+# Verify container file exists
+if [ ! -f "{container}" ]; then
+    echo "ERROR: Container file not found: {container}" >&2
+    exit 1
+fi
+
+# Create the SLURM submission script
 cat << EOF > diamond_task.submit
 #!/bin/bash
 
@@ -105,11 +118,35 @@ cat << EOF > diamond_task.submit
 #SBATCH --account={account}
 
 {sc_config_commands}
-echo $PWD                       
+echo "Starting job at: $(date)"
+echo "Working directory: $PWD"
+echo "Container: {container}"
+echo "Task: {task}"
+
 srun apptainer exec --nv {container} {task}
 
+echo "Job completed at: $(date)"
 EOF
 
-sbatch {reservation} $PWD/diamond_task.submit
+# Verify the script was created
+if [ ! -f diamond_task.submit ]; then
+    echo "ERROR: Failed to create submission script" >&2
+    exit 1
+fi
+
+# Submit the job and capture the output
+echo "Submitting job with sbatch..."
+sbatch_output=$(sbatch {reservation} $PWD/diamond_task.submit 2>&1)
+sbatch_exit_code=$?
+
+# Check if sbatch succeeded
+if [ $sbatch_exit_code -ne 0 ]; then
+    echo "ERROR: sbatch command failed with exit code $sbatch_exit_code" >&2
+    echo "sbatch output: $sbatch_output" >&2
+    exit $sbatch_exit_code
+fi
+
+# Output the sbatch result
+echo "$sbatch_output"
 """
 )

@@ -1,10 +1,11 @@
 import time
 from datetime import datetime
 import urllib.parse
-from datetime import datetime
+import re
 
 import globus_sdk
 from flask import jsonify, redirect, request
+from globus_compute_sdk.errors import TaskPending
 
 from . import app, database, logger
 from .utils.data_prep import register_all_endpoints, load_accounts_partitions
@@ -15,6 +16,7 @@ from .utils.functions import (
     get_container_status,
     get_task_status,
     log_reader_wrapper,
+    get_job_status,
     submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client
@@ -454,6 +456,7 @@ def diamond_endpoint_submit_job():
     task = request.json.get("task")
     num_of_nodes = request.json.get("num_of_nodes")
     time_duration = request.json.get("time_duration")
+    max_retries = request.json.get("max_retries", 3)  # Default to 3 retries
     identity_id = request.cookies.get("primary_identity")
     if not num_of_nodes:
         num_of_nodes = 1
@@ -468,10 +471,13 @@ def diamond_endpoint_submit_job():
     )
 
     globus_compute_client = initialize_globus_compute_client()
-    function_id = globus_compute_client.register_function(submit_task)
     sc_config_commands = ""
     if database.get_endpoint_host(endpoint_uuid=endpoint_id) == "tacc-frontera":
         sc_config_commands = "module load tacc-apptainer"
+    function_id = globus_compute_client.register_function(submit_task)
+    # job_status_func_id = globus_compute_client.register_function(get_job_status)
+    
+
     task_id = globus_compute_client.run(
         partition=partition,
         account=account,
@@ -487,31 +493,63 @@ def diamond_endpoint_submit_job():
         sc_config_commands=sc_config_commands,
         function_id=function_id,
     )
-    # Wait for submit task to complete.
-    submit_task_status = globus_compute_client.get_task(task_id)
-    logger.info(f"submit_task_status: {submit_task_status}")
-    logger.info(f"reservation: {reservation}")
-    while submit_task_status["pending"]:
-        logger.info("submit_task_status", submit_task_status)
-        time.sleep(2)
-        submit_task_status = globus_compute_client.get_task(task_id)
-        continue
+    # Wait for submit task to complete with timeout to prevent hanging indefinitely
+    max_attempts = 5
+    submit_result = None
+    for _ in range(max_attempts):
+        try:
+            submit_result = globus_compute_client.get_result(task_id)
+        except TaskPending:
+            continue
+        except Exception:
+            logger.exception("Failed to fetch results for task_id: %s", task_id)
+            return jsonify({
+                "error": "Failed to submit job - could not fetch results from endpoint",
+                "task_id": task_id
+            }), 500
+        else:
+            break
+    
+    if submit_result is None:
+        return jsonify({
+            "error": "Failed to submit job - task timed out after maximum attempts",
+            "task_id": task_id
+        }), 500
+    
+    logger.debug(f"SUBMIT RESULT: {submit_result}")
 
+    # Parse SLURM job ID from output - currently only supporting SLURM-based systems
+    match = re.search(r"Submitted batch job (\d+)", submit_result.stdout)
+    if not match:
+        logger.error(f"Could not parse job ID from stdout: {submit_result.stdout}")
+        return jsonify({
+            "error": "Failed to submit job - could not parse job ID from SLURM output",
+            "stdout": submit_result.stdout,
+        }), 500
+
+    slurm_job_id = match.group(1)
+    logger.info(f"SLURM job ID: {slurm_job_id}")
+
+    
     database.save_task(
         task_id=task_id,
+        batch_job_id=slurm_job_id,
         task_name=task_name,
         identity_id=identity_id,
         task_status="submitted",
         task_create_time=datetime.now(),
         log_path=log_path,
+        stdout_path="",  # Will be set by backend
+        stderr_path="",  # Will be set by backend
+        compute_endpoint_id=endpoint_id,
+        checkpoint_path="",  # Will be set by backend
     )
-    return jsonify(
-        {
-            "task_id": task_id,
-            "task_name": task_name,
-            "message": "Task submitted successfully",
-        }
-    )
+    return jsonify({
+        "task_id": task_id,
+        "batch_job_id": slurm_job_id,
+        "task_name": task_name,
+        "message": "Task submitted successfully",
+    })
 
 
 @app.route("/api/get_task_status", methods=["GET"])
@@ -555,11 +593,16 @@ def diamond_get_task_status():
 
         database.save_task(
             task_id=task.task_id,
+            batch_job_id=task.batch_job_id,
             task_name=task.task_name,
             identity_id=task.identity_id,
             task_status=task.task_status,
             task_create_time=task.task_create_time,
             log_path=task.log_path,
+            stdout_path=task.stdout_path,
+            stderr_path=task.stderr_path,
+            compute_endpoint_id=task.compute_endpoint_id,
+            checkpoint_path=task.checkpoint_path,
         )
 
     # Reload the updated tasks from the database

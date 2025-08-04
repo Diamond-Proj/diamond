@@ -58,20 +58,30 @@ class Database:
     def save_task(
         self,
         task_id=None,
+        batch_job_id=None,
         task_name=None,
         identity_id=None,
         task_status=None,
         task_create_time=None,
         log_path=None,
+        stdout_path=None,
+        stderr_path=None,
+        compute_endpoint_id=None,
+        checkpoint_path=None,
     ):
         logger.info(f"Saving task: {task_id}, {identity_id}")
         task = Task(
             task_id=task_id,
+            batch_job_id=batch_job_id,
             task_name=task_name,
             identity_id=identity_id,
             task_status=task_status,
             task_create_time=task_create_time,
             log_path=log_path,
+            stdout_path=stdout_path,
+            stderr_path=stderr_path,
+            compute_endpoint_id=compute_endpoint_id,
+            checkpoint_path=checkpoint_path,
         )
         db.session.merge(task)
         db.session.commit()
