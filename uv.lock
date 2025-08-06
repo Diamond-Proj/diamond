@@ -223,7 +223,7 @@ requires-dist = [
     { name = "flask", specifier = "==3.1.*" },
     { name = "flask-cors", specifier = "==5.0.*" },
     { name = "flask-sqlalchemy", specifier = "==3.1.1" },
-    { name = "globus-compute-sdk", specifier = "==3.5.*" },
+    { name = "globus-compute-sdk", specifier = "==3.11.*" },
     { name = "globus-sdk", specifier = ">=3.51,<4" },
     { name = "gunicorn", specifier = "==23.0.*" },
     { name = "psycopg2-binary", specifier = "==2.9.*" },
@@ -289,6 +289,18 @@ wheels = [
 ]
 
 [[package]]
+name = "exceptiongroup"
+version = "1.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "typing-extensions" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/0b/9f/a65090624ecf468cdca03533906e7c69ed7588582240cfe7cc9e770b50eb/exceptiongroup-1.3.0.tar.gz", hash = "sha256:b241f5885f560bc56a59ee63ca4c6a8bfa46ae4ad651af316d4e81817bb9fd88", size = 29749, upload-time = "2025-05-10T17:42:51.123Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/36/f4/c6e662dade71f56cd2f3735141b265c3c79293c109549c1e6933b0651ffc/exceptiongroup-1.3.0-py3-none-any.whl", hash = "sha256:4d111e6e0c13d0644cad6ddaa7ed0261a0b36971f6d23e7ec9b4b9097da78a10", size = 16674, upload-time = "2025-05-10T17:42:49.33Z" },
+]
+
+[[package]]
 name = "filelock"
 version = "3.18.0"
 source = { registry = "https://pypi.org/simple" }
@@ -342,23 +354,24 @@ wheels = [
 
 [[package]]
 name = "globus-compute-common"
-version = "0.5.0"
+version = "0.7.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f4/d2/b43d4cedc9d602865fbfbfc50959dabd212e51833bacdf71c036aa32fdab/globus_compute_common-0.5.0.tar.gz", hash = "sha256:393c9949fcb9647ec6c7ed9d7c24d5b15de0ac7aa6e4b9f03c6bd03ff5fd869d", size = 24915, upload-time = "2024-11-11T21:56:15.08Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e9/d9/b23739cb26a7a9d71e0efede7092d2ba1ef505c0b4d0582ad582144ded2c/globus_compute_common-0.7.1.tar.gz", hash = "sha256:2797aa7fdc91e7f944dd072eec4625766511d26af559bac374b1fb34321c94cb", size = 25028, upload-time = "2025-06-06T20:00:29.68Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/16/5b/aedcb91d0685e9ed47bb5a8380590ac76689c2b29cc761a67bcb7b50a338/globus_compute_common-0.5.0-py3-none-any.whl", hash = "sha256:d20857ea51de4d5a5e4f439b0de50e00ce3b698891b3779761653289582c0183", size = 35349, upload-time = "2024-11-11T21:56:14.092Z" },
+    { url = "https://files.pythonhosted.org/packages/f5/48/200feced505df15ec60931d84d57f1dbc7b99a4749d190ea6eb9317eccab/globus_compute_common-0.7.1-py3-none-any.whl", hash = "sha256:48a2af1d5067ca18bc6a24dc2457fee23d5bf6285a1128a7cd28a4a5f5758c59", size = 35464, upload-time = "2025-06-06T20:00:28.01Z" },
 ]
 
 [[package]]
 name = "globus-compute-sdk"
-version = "3.5.0"
+version = "3.11.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
     { name = "dill" },
+    { name = "exceptiongroup" },
     { name = "globus-compute-common" },
     { name = "globus-sdk" },
     { name = "packaging" },
@@ -369,9 +382,9 @@ dependencies = [
     { name = "tblib" },
     { name = "texttable" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/7e/58/7f6004e535d4d80b081eebb30d4306e3d97137f531a3526af0d961e202de/globus_compute_sdk-3.5.0.tar.gz", hash = "sha256:f5b0f527eb0ba54acf301c6852f96daf7aae2f6a018c4ba6baddaba5530d7dd4", size = 66554, upload-time = "2025-04-02T13:30:30.784Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/0c/b4/5106245f44d064581cf7efa8622974ac83454565d909b1765c27215a5288/globus_compute_sdk-3.11.0.tar.gz", hash = "sha256:5fb1b8a0b829fd597853461064a57dabe9ebc6f41e4fb69b3df2c2475fffefe0", size = 69771, upload-time = "2025-07-23T16:11:32.761Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/81/58/e73501a8728522febee253b18ab40c89e090a95ef50418e021c42209fd69/globus_compute_sdk-3.5.0-py3-none-any.whl", hash = "sha256:8ca5a5a61e209d537b7bf5f2c287bd9f09ea36e990c4b95091aab9e5fa731c3e", size = 78994, upload-time = "2025-04-02T13:30:29.354Z" },
+    { url = "https://files.pythonhosted.org/packages/42/f4/5d6a488283a1ca84f4c3c26533caeda5d7d14232fb43d33609810149fbc9/globus_compute_sdk-3.11.0-py3-none-any.whl", hash = "sha256:12e4c9d5a156d5d264c9f0ec4f508545ebb8c1ac866a18561a0a7f40c044fc46", size = 82176, upload-time = "2025-07-23T16:11:31.26Z" },
 ]
 
 [[package]]
