@@ -1,0 +1,51 @@
+[project]
+name = "diamond-admin-backend"
+version = "0.1.0"
+description = "Diamond HPC Admin Backend - Flask API server"
+readme = "README.md"
+requires-python = "==3.11.*"
+dependencies = [
+    "diamond-hpc==0.0.*",
+    "flask==3.1.*",
+    "flask-cors==5.0.*",
+    "globus-compute-sdk==3.5.*",
+    "globus-sdk>=3.51,<4",
+    "gunicorn==23.0.*",
+    "psycopg2-binary==2.9.*",
+    "python-dotenv==1.0.*",
+    "requests==2.32.*",
+    "flask-sqlalchemy==3.1.1",
+    "elegant-logger==0.0.2",
+]
+
+[dependency-groups]
+dev = [
+    "mypy>=1.17.1",
+    "pre-commit>=4.2.0",
+    "pytest>=8.4.1",
+    "pytest-cov>=6.2.1",
+    "ruff>=0.12.7",
+    "tox>=4.28.3",
+]
+
+[tool.ruff]
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",   # pycodestyle errors
+    "F",   # pyflakes
+    "I",   # isort
+]
+ignore = [
+    "E501",  # line too long - handled by formatter
+]
+
+[tool.ruff.lint.isort]
+known-first-party = ["app"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py", "*_test.py"]
+python_functions = ["test_*"]
+

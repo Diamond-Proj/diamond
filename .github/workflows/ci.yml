@@ -8,13 +8,37 @@ on:
   workflow_dispatch:
 
 jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Install uv
+      uses: astral-sh/setup-uv@v4
+      with:
+        version: "latest"
+
+    - name: Install dependencies
+      run: uv sync --dev --frozen
+
+    - name: Lint and format check
+      run: uv run tox -e lint
+      continue-on-error: true
+
+    - name: Type check
+      run: uv run tox -e type
+      continue-on-error: true
+
+    - name: Run unit tests
+      run: uv run tox -e py311
+      continue-on-error: true
 
   build:
     runs-on: ubuntu-latest
 
     steps:
     - uses: actions/checkout@v4
-
     - name: Extract start command from railway.json
       id: railway-config
       run: echo "start_cmd=$(jq -r '.deploy.startCommand' railway.json)" >> $GITHUB_OUTPUT
