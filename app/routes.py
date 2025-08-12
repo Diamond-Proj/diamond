@@ -1,22 +1,19 @@
+import re
 import time
 from datetime import datetime
-import urllib.parse
-import re
 
 import globus_sdk
 from flask import jsonify, redirect, request
 from globus_compute_sdk.errors import TaskPending
 
 from . import app, database, logger
-from .utils.data_prep import register_all_endpoints, load_accounts_partitions
+from .utils.data_prep import load_accounts_partitions, register_all_endpoints
 from .utils.decorators import authenticated
 from .utils.functions import (
     apptainer_def_file_creation,
     container_builder_wrapper_shell,
-    get_container_status,
     get_task_status,
     log_reader_wrapper,
-    get_job_status,
     submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client

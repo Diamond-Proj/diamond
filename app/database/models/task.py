@@ -2,8 +2,10 @@
 Task model
 """
 
-from app.database.db import db
 from sqlalchemy import func
+
+from app.database.db import db
+
 
 class Task(db.Model):
     task_id = db.Column(db.String, primary_key=True)

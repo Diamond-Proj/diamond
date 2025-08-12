@@ -1,5 +1,6 @@
 import re
 
+
 def resolve_host(hostname: str) -> str:
     if re.search(r'\.frontera\.tacc\.', hostname):
         return "tacc-frontera"

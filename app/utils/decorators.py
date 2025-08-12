@@ -1,14 +1,10 @@
 import json
-import logging
 import urllib.parse  # Add this import for URL decoding
 from functools import wraps
 
 from flask import jsonify, redirect, request, session, url_for
-from werkzeug.datastructures import ImmutableMultiDict
 
 from .. import logger
-from ..utils.errors import UnauthorizedError
-from ..utils.utils import get_portal_tokens, load_portal_client
 
 
 def authenticated(fn):

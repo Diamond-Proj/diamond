@@ -1,8 +1,5 @@
 # Globus compute helper functions
-import os
 from globus_compute_sdk import ShellFunction
-from globus_compute_sdk import Executor as GlobusComputeExecutor
-
 
 get_partitions = ShellFunction('sinfo -h -o "%P"')
 

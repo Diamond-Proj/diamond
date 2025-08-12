@@ -1,14 +1,13 @@
-import logger
 import os
 from datetime import datetime
 
+import logger
 from dotenv import dotenv_values, load_dotenv
 from flask import Flask
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from .database.data_manager import Database
-
 
 # Load environment variables first, before any other imports or app creation
 load_dotenv()

@@ -4,6 +4,7 @@ Profile model
 
 from app.database.db import db
 
+
 class Profile(db.Model):
     identity_id = db.Column(db.String(255), primary_key=True)
     name = db.Column(db.String(255))

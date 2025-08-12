@@ -1,9 +1,9 @@
 import json
-import urllib.parse  # Add this import for URL decoding
 import logging
+import urllib.parse  # Add this import for URL decoding
 
 import globus_sdk
-from flask import request, session
+from flask import request
 from globus_compute_sdk import Client as GlobusComputeClient
 from globus_compute_sdk.sdk.login_manager import AuthorizerLoginManager
 from globus_compute_sdk.sdk.login_manager.manager import ComputeScopeBuilder

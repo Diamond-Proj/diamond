@@ -1,14 +1,12 @@
 """Manage access to the database."""
+import logging  # some issue with importing logger from app
+
 from flask import Flask
-from flask_sqlalchemy import SQLAlchemy
 
 from app.database.db import db
 from app.database.models.container import Container
-from app.database.models.profile import Profile
-from app.database.models.task import Task
 from app.database.models.endpoints import Endpoints
- 
-import logging  # some issue with importing logger from app
+from app.database.models.task import Task
 
 logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%dT%H:%M:%S',
                     format='%(asctime)-15s.%(msecs)03dZ %(levelname)-7s : %(name)s - %(message)s')

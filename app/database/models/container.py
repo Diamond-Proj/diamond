@@ -4,6 +4,7 @@ Container model
 
 from app.database.db import db
 
+
 class Container(db.Model):
     container_task_id = db.Column(db.String)
     container_status = db.Column(db.String)

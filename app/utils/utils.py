@@ -1,8 +1,9 @@
 import os
 from threading import Lock
+from urllib.parse import urljoin, urlparse
+
 import globus_sdk
 from flask import current_app, request
-from urllib.parse import urljoin, urlparse
 
 
 def get_git_info():
