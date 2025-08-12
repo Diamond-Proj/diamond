@@ -383,8 +383,9 @@ def get_build_log():
             try:
                 build_task_status = globus_compute_client.get_task(build_task_id)
                 build_status = build_task_status.get("status", "running")
-            except:
-                pass
+            except Exception as e:
+                logger.error(f"Error getting build status: {e}")
+                return jsonify({"status": "error", "error": str(e)}), 500
 
         # Determine overall status
         if log_result and log_result.get("is_complete"):
@@ -453,7 +454,7 @@ def diamond_endpoint_submit_job():
     task = request.json.get("task")
     num_of_nodes = request.json.get("num_of_nodes")
     time_duration = request.json.get("time_duration")
-    max_retries = request.json.get("max_retries", 3)  # Default to 3 retries
+    # max_retries = request.json.get("max_retries", 3)  # Default to 3 retries
     identity_id = request.cookies.get("primary_identity")
     if not num_of_nodes:
         num_of_nodes = 1
@@ -556,7 +557,7 @@ def diamond_get_task_status():
     globus_compute_client = initialize_globus_compute_client()
 
     tasks = database.load_tasks(identity_id=identity_id)
-    task_status_changed = False
+    # task_status_changed = False
 
     for task in tasks:
         task_id = task.task_id
@@ -585,7 +586,7 @@ def diamond_get_task_status():
             task.task_status = task.task_status
         else:
             task.task_status = task_status
-            task_status_changed = True
+            # task_status_changed = True
         logger.info(task_status)
 
         database.save_task(

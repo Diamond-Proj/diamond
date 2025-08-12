@@ -59,4 +59,7 @@ with app.app_context():
 
 
 # Import routes after app is created to avoid circular imports
-from . import routes
+def register_routes():
+    from . import routes as routes
+
+register_routes()

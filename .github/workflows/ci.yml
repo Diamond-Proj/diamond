@@ -24,7 +24,6 @@ jobs:
 
     - name: Lint and format check
       run: uv run tox -e lint
-      continue-on-error: true
 
     - name: Type check
       run: uv run tox -e type
