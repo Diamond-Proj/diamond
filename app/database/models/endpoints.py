@@ -11,15 +11,15 @@ class Endpoints(db.Model):
     accounts = db.Column(db.JSON, nullable=True)
 
     def __init__(
-            self,
-            identity_id,
-            endpoint_name,
-            endpoint_host,
-            endpoint_uuid,
-            endpoint_status,
-            partitions=None,
-            accounts=None,
-        ):
+        self,
+        identity_id,
+        endpoint_name,
+        endpoint_host,
+        endpoint_uuid,
+        endpoint_status,
+        partitions=None,
+        accounts=None,
+    ):
         self.identity_id = identity_id
         self.endpoint_name = endpoint_name
         self.endpoint_host = endpoint_host

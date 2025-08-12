@@ -7,11 +7,13 @@ from .functions import get_accounts, get_partitions
 from .parsers import resolve_host
 
 
-def register_all_endpoints(globus_compute_client: GlobusComputeClient, identity_id, database, logger):
+def register_all_endpoints(
+    globus_compute_client: GlobusComputeClient, identity_id, database, logger
+):
     logger.info(f"Registering all endpoints for user: {identity_id}")
 
     # Specify role=Any to fetch MEPs in addition to those owned by the user
-    endpoints = globus_compute_client.get_endpoints(role='any')
+    endpoints = globus_compute_client.get_endpoints(role="any")
     all_endpoints = []
 
     for endpoint in endpoints:
@@ -28,7 +30,9 @@ def register_all_endpoints(globus_compute_client: GlobusComputeClient, identity_
                 f"Error getting endpoint status for endpoint {endpoint_name}: {e}"
             )
             continue
-        endpoint_metadata = globus_compute_client.get_endpoint_metadata(endpoint_uuid=endpoint_uuid)
+        endpoint_metadata = globus_compute_client.get_endpoint_metadata(
+            endpoint_uuid=endpoint_uuid
+        )
         endpoint_host = resolve_host(endpoint_metadata["hostname"])
         if not database.exists_endpoint(endpoint_uuid=endpoint_uuid):
             logger.info(f"Saving endpoint: {endpoint_name}")
@@ -41,7 +45,9 @@ def register_all_endpoints(globus_compute_client: GlobusComputeClient, identity_
             )
         else:
             logger.info(f"Endpoint {endpoint_name} already exists, updating status")
-            database.update_endpoint_status(endpoint_uuid=endpoint_uuid, endpoint_status=endpoint_status)
+            database.update_endpoint_status(
+                endpoint_uuid=endpoint_uuid, endpoint_status=endpoint_status
+            )
         all_endpoints.append(
             {
                 "endpoint_uuid": endpoint_uuid,
@@ -91,11 +97,13 @@ def _get_endpoint_accounts(
     return endpoint_uuid, account_list
 
 
-def load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globus_compute_client):
+def load_accounts_partitions(
+    endpoint_uuid, identity_id, database, logger, globus_compute_client
+):
     """Load accounts and partitions for an endpoint"""
     get_partitions_func_id = globus_compute_client.register_function(get_partitions)
     accounts_func_id = globus_compute_client.register_function(get_accounts)
-    
+
     with concurrent.futures.ThreadPoolExecutor() as executor:
         # Start account and partition tasks in parallel
         account_future = executor.submit(
@@ -113,12 +121,14 @@ def load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globu
             get_partitions_func_id,
             logger,
         )
-    
+
         # Process results as they complete
         partition_list = None
         account_list = None
-        
-        for future in concurrent.futures.as_completed([partition_future, account_future]):
+
+        for future in concurrent.futures.as_completed(
+            [partition_future, account_future]
+        ):
             try:
                 endpoint_uuid, result = future.result()
                 if future == account_future:
@@ -138,7 +148,9 @@ def load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globu
                 else:
                     logger.error(f"Unknown future: {future}")
             except Exception as e:
-                logger.error(f"Error processing endpoint data with endpoint_uuid: {endpoint_uuid}: {e}")
+                logger.error(
+                    f"Error processing endpoint data with endpoint_uuid: {endpoint_uuid}: {e}"
+                )
                 raise
-    
+
     return account_list, partition_list

@@ -12,9 +12,13 @@ from globus_sdk.scopes import AuthScopes
 
 from ..utils.utils import load_portal_client
 
-logging.basicConfig(level=logging.INFO, datefmt='%Y-%m-%dT%H:%M:%S',
-                    format='%(asctime)-15s.%(msecs)03dZ %(levelname)-7s : %(name)s - %(message)s')
+logging.basicConfig(
+    level=logging.INFO,
+    datefmt="%Y-%m-%dT%H:%M:%S",
+    format="%(asctime)-15s.%(msecs)03dZ %(levelname)-7s : %(name)s - %(message)s",
+)
 logger = logging.getLogger(__name__)
+
 
 class AuthClientManager:
     _instance = None

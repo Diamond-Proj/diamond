@@ -42,14 +42,26 @@ def home():
 def healthcheck():
     """Health check endpoint."""
     logger.info("Health check route")
-    
+
     # Get git information
     git_info = get_git_info()
     if git_info["commit_sha"] == "unknown":
-        return jsonify({"status": "unhealthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 500
+        return jsonify(
+            {
+                "status": "unhealthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "git": git_info,
+            }
+        ), 500
     else:
-        return jsonify({"status": "healthy", "timestamp": datetime.utcnow().isoformat(), "git": git_info}), 200
-    
+        return jsonify(
+            {
+                "status": "healthy",
+                "timestamp": datetime.utcnow().isoformat(),
+                "git": git_info,
+            }
+        ), 200
+
 
 @app.route("/api/is_authenticated", methods=["GET"])
 @authenticated
@@ -77,8 +89,16 @@ def diamond_load_accounts_partitions():
     identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.json.get("endpoint_uuid")
     globus_compute_client = initialize_globus_compute_client()
-    account_list, partition_list = load_accounts_partitions(endpoint_uuid, identity_id, database, logger, globus_compute_client)
-    return jsonify({"status": "success", "account_list": account_list, "partition_list": partition_list}), 200
+    account_list, partition_list = load_accounts_partitions(
+        endpoint_uuid, identity_id, database, logger, globus_compute_client
+    )
+    return jsonify(
+        {
+            "status": "success",
+            "account_list": account_list,
+            "partition_list": partition_list,
+        }
+    ), 200
 
 
 @app.route("/api/list_all_endpoints", methods=["GET"])
@@ -474,7 +494,6 @@ def diamond_endpoint_submit_job():
         sc_config_commands = "module load tacc-apptainer"
     function_id = globus_compute_client.register_function(submit_task)
     # job_status_func_id = globus_compute_client.register_function(get_job_status)
-    
 
     task_id = globus_compute_client.run(
         partition=partition,
@@ -501,34 +520,39 @@ def diamond_endpoint_submit_job():
             continue
         except Exception:
             logger.exception("Failed to fetch results for task_id: %s", task_id)
-            return jsonify({
-                "error": "Failed to submit job - could not fetch results from endpoint",
-                "task_id": task_id
-            }), 500
+            return jsonify(
+                {
+                    "error": "Failed to submit job - could not fetch results from endpoint",
+                    "task_id": task_id,
+                }
+            ), 500
         else:
             break
-    
+
     if submit_result is None:
-        return jsonify({
-            "error": "Failed to submit job - task timed out after maximum attempts",
-            "task_id": task_id
-        }), 500
-    
+        return jsonify(
+            {
+                "error": "Failed to submit job - task timed out after maximum attempts",
+                "task_id": task_id,
+            }
+        ), 500
+
     logger.debug(f"SUBMIT RESULT: {submit_result}")
 
     # Parse SLURM job ID from output - currently only supporting SLURM-based systems
     match = re.search(r"Submitted batch job (\d+)", submit_result.stdout)
     if not match:
         logger.error(f"Could not parse job ID from stdout: {submit_result.stdout}")
-        return jsonify({
-            "error": "Failed to submit job - could not parse job ID from SLURM output",
-            "stdout": submit_result.stdout,
-        }), 500
+        return jsonify(
+            {
+                "error": "Failed to submit job - could not parse job ID from SLURM output",
+                "stdout": submit_result.stdout,
+            }
+        ), 500
 
     slurm_job_id = match.group(1)
     logger.info(f"SLURM job ID: {slurm_job_id}")
 
-    
     database.save_task(
         task_id=task_id,
         batch_job_id=slurm_job_id,
@@ -542,12 +566,14 @@ def diamond_endpoint_submit_job():
         compute_endpoint_id=endpoint_id,
         checkpoint_path="",  # Will be set by backend
     )
-    return jsonify({
-        "task_id": task_id,
-        "batch_job_id": slurm_job_id,
-        "task_name": task_name,
-        "message": "Task submitted successfully",
-    })
+    return jsonify(
+        {
+            "task_id": task_id,
+            "batch_job_id": slurm_job_id,
+            "task_name": task_name,
+            "message": "Task submitted successfully",
+        }
+    )
 
 
 @app.route("/api/get_task_status", methods=["GET"])
