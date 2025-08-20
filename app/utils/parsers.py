@@ -1,7 +1,10 @@
 import re
+from typing import Optional
 
 
-def resolve_host(hostname: str) -> str:
+def resolve_host(hostname: Optional[str]) -> str:
+    if hostname is None:
+        return "unknown"
     if re.search(r"\.frontera\.tacc\.", hostname):
         return "tacc-frontera"
     elif re.search(r"\.delta\.ncsa\.", hostname):
