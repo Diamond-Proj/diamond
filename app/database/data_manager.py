@@ -8,6 +8,7 @@ from app.database.db import db
 from app.database.models.container import Container
 from app.database.models.endpoints import Endpoints
 from app.database.models.task import Task
+from app.utils.errors import TaskNotFoundError
 
 logging.basicConfig(
     level=logging.INFO,
@@ -86,6 +87,16 @@ class Database:
         )
         db.session.merge(task)
         db.session.commit()
+
+    def update_task_status(self, task_id, task_status):
+        logger.info(f"Updating task status: {task_id}, {task_status}")
+        task = Task.query.filter_by(task_id=task_id).first()
+        if task:
+            task.task_status = task_status
+            db.session.commit()
+        else:
+            # logger.error(f"Task {task_id} not found")
+            raise TaskNotFoundError(task_id=task_id)
 
     def load_tasks(self, identity_id):
         logger.info(f"Loading task data for identity_id: {identity_id}")

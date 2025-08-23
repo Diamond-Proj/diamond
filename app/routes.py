@@ -615,19 +615,7 @@ def diamond_get_task_status():
             # task_status_changed = True
         logger.info(task_status)
 
-        database.save_task(
-            task_id=task.task_id,
-            batch_job_id=task.batch_job_id,
-            task_name=task.task_name,
-            identity_id=task.identity_id,
-            task_status=task.task_status,
-            task_create_time=task.task_create_time,
-            log_path=task.log_path,
-            stdout_path=task.stdout_path,
-            stderr_path=task.stderr_path,
-            compute_endpoint_id=task.compute_endpoint_id,
-            checkpoint_path=task.checkpoint_path,
-        )
+        database.update_task_status(task.task_id, task.task_status)
 
     # Reload the updated tasks from the database
     updated_tasks = database.load_tasks(identity_id=identity_id)

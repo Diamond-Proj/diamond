@@ -74,3 +74,20 @@ class ForbiddenError(Exception):
         ret["message"] = self.message
 
         return ret
+
+
+class TaskNotFoundError(Exception):
+    status_code: int = 404
+    message: str = "Task not found"
+
+    def __init__(self, task_id: int, status_code: int = 404, payload=None):
+        Exception.__init__(self)
+        self.message = f"Task with ID {task_id} not found"
+        self.status_code = status_code
+        self.payload = payload
+
+    def to_dict(self):
+        ret = dict(self.payload or ())
+        ret["message"] = self.message
+
+        return ret
