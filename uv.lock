@@ -1,5 +1,5 @@
 version = 1
-revision = 2
+revision = 3
 requires-python = "==3.11.*"
 
 [[package]]
@@ -201,6 +201,7 @@ dependencies = [
     { name = "globus-compute-sdk" },
     { name = "globus-sdk" },
     { name = "gunicorn" },
+    { name = "jinja2" },
     { name = "psycopg2-binary" },
     { name = "python-dotenv" },
     { name = "requests" },
@@ -226,6 +227,7 @@ requires-dist = [
     { name = "globus-compute-sdk", specifier = "==3.11.*" },
     { name = "globus-sdk", specifier = ">=3.51,<4" },
     { name = "gunicorn", specifier = "==23.0.*" },
+    { name = "jinja2", specifier = "==3.1.6" },
     { name = "psycopg2-binary", specifier = "==2.9.*" },
     { name = "python-dotenv", specifier = "==1.0.*" },
     { name = "requests", specifier = "==2.32.*" },
