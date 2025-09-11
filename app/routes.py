@@ -1,22 +1,29 @@
+import os
 import re
 import time
 from datetime import datetime
 
 import globus_sdk
 from flask import jsonify, redirect, request
+from globus_compute_sdk import ShellFunction
 from globus_compute_sdk.errors import TaskPending
 
 from . import app, database, logger
+from .utils.config_loader import load_container_module_command
 from .utils.data_prep import load_accounts_partitions, register_all_endpoints
 from .utils.decorators import authenticated
 from .utils.functions import (
-    apptainer_def_file_creation,
-    container_builder_wrapper_shell,
+    check_diamond_work_path,
+    create_diamond_dir,
     get_task_status,
     log_reader_wrapper,
-    submit_task,
 )
 from .utils.login_flow import initialize_globus_compute_client
+from .utils.scripts_render import (
+    render_apptainer_build_script,
+    render_build_container_script,
+    render_submit_task_script,
+)
 from .utils.transfer import get_transfer_client
 from .utils.utils import get_git_info
 
@@ -113,6 +120,7 @@ def diamond_list_all_endpoints():
                 "endpoint_uuid": endpoint.endpoint_uuid,
                 "endpoint_host": endpoint.endpoint_host,
                 "endpoint_status": endpoint.endpoint_status,
+                "diamond_dir": endpoint.diamond_dir,
             }
         )
     return all_endpoints
@@ -131,11 +139,60 @@ def diamond_list_active_endpoints():
                     "endpoint_uuid": endpoint.endpoint_uuid,
                     "endpoint_host": endpoint.endpoint_host,
                     "endpoint_status": endpoint.endpoint_status,
+                    "diamond_dir": endpoint.diamond_dir,
                 }
             )
         else:
             continue
     return active_endpoints
+
+
+@app.route("/api/get_diamond_dir", methods=["GET"])
+@authenticated
+def diamond_get_diamond_dir():
+    # TODO: Use both identity_id and endpoint_uuid to get the diamond_dir
+    # identity_id = request.cookies.get("primary_identity")
+    endpoint_uuid = request.args.get("endpoint_uuid")
+    diamond_dir = database.get_diamond_dir(endpoint_uuid=endpoint_uuid)
+    return jsonify({"diamond_dir": diamond_dir})
+
+
+@app.route("/api/set_diamond_work_path", methods=["POST"])
+@authenticated
+def diamond_set_diamond_work_path():
+    endpoint_uuid = request.json.get("endpoint_uuid")
+    diamond_work_path = request.json.get("diamond_work_path")
+    diamond_dir = diamond_work_path + "/diamond"
+    diamond_log_dir = diamond_dir + "/logs"
+    diamond_image_dir = diamond_dir + "/images"
+    globus_compute_client = initialize_globus_compute_client()
+    check_diamond_work_path_func_id = globus_compute_client.register_function(check_diamond_work_path)
+    check_diamond_work_path_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_uuid,
+        function_id=check_diamond_work_path_func_id,
+        diamond_work_path=diamond_work_path
+    )
+    check_diamond_work_path_task_status = globus_compute_client.get_task(check_diamond_work_path_task_id)
+    while check_diamond_work_path_task_status["pending"]:
+        time.sleep(2)
+        check_diamond_work_path_task_status = globus_compute_client.get_task(check_diamond_work_path_task_id)
+        continue
+    check_diamond_work_path_task_result = globus_compute_client.get_result(check_diamond_work_path_task_id)
+    if check_diamond_work_path_task_result == 0:
+        return jsonify({"error": "Diamond work path does not exist or is not writable"}), 400
+    create_diamond_dir_func_id = globus_compute_client.register_function(create_diamond_dir)
+    globus_compute_client.run(
+        endpoint_id=endpoint_uuid,
+        function_id=create_diamond_dir_func_id,
+        diamond_dir=diamond_dir,
+        diamond_log_dir=diamond_log_dir,
+        diamond_image_dir=diamond_image_dir
+    )
+    database.save_diamond_dir(
+        endpoint_uuid=endpoint_uuid,
+        diamond_dir=diamond_dir,
+    )
+    return jsonify({"status": "success"})
 
 
 @app.route("/api/transfers", methods=["GET"])
@@ -258,11 +315,11 @@ def diamond_endpoint_image_builder():
     dependencies = request.json.get("dependencies")
     environment = request.json.get("environment")
     commands = request.json.get("commands")
-    location = request.json.get("location")
     account = request.json.get("account")
     reservation = request.json.get("reservation")
     partition = request.json.get("partition")
     identity_id = request.cookies.get("primary_identity")
+    time_duration = request.json.get("time_duration", "00:30:00")
 
     logger.info(
         f""" Creating container with the following parameters:
@@ -272,26 +329,32 @@ def diamond_endpoint_image_builder():
         dependencies: {dependencies}
         environment: {environment}
         commands: {commands}
-        location: {location}
         account: {account}
         reservation: {reservation}
         partition: {partition}
-        identity_id: {identity_id}"""
+        identity_id: {identity_id}
+        time_duration: {time_duration}"""
     )
     # First we create the def file using ShellFunction.
     globus_compute_client = initialize_globus_compute_client()
+    location = database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    stdout_path = os.path.join(location, "logs", name + ".stdout")
+    stderr_path = os.path.join(location, "logs", name + ".stderr")
+
+    create_apptainer_def_script = render_apptainer_build_script(
+        container_name=name,
+        location=location,
+        base_image=base_image,
+        commands=commands,
+        environment=environment
+    )
+    create_apptainer_def_shell = ShellFunction(create_apptainer_def_script)
     def_file_creation_function_id = globus_compute_client.register_function(
-        apptainer_def_file_creation
+        create_apptainer_def_shell
     )
     def_file_creation_task_id = globus_compute_client.run(
         endpoint_id=endpoint_id,
-        base_image=base_image,
-        location=location,
-        dependencies=dependencies,
-        commands=commands,
-        environment=environment,
         function_id=def_file_creation_function_id,
-        container_name=name,
     )
     # Wait for the def file creation task to complete.
     def_file_creation_task_status = globus_compute_client.get_task(
@@ -304,26 +367,29 @@ def diamond_endpoint_image_builder():
         )
         continue
 
-    # Then we create the container using ShellFunction with SBATCH commands.
-    sc_config_commands = ""
-    if database.get_endpoint_host(endpoint_uuid=endpoint_id) == "tacc-frontera":
-        sc_config_commands = "module load tacc-apptainer"
     if reservation and reservation != "":
         reservation = "--reservation=" + reservation
-    function_id = globus_compute_client.register_function(
-        container_builder_wrapper_shell
-    )
-    container_task_id = globus_compute_client.run(
+
+    endpoint_host = database.get_endpoint_host(endpoint_uuid=endpoint_id)
+    container_module_command = load_container_module_command(endpoint_host)
+    build_container_script = render_build_container_script(
         container_name=name,
-        base_image=base_image,
         location=location,
-        endpoint_id=endpoint_id,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        time_duration=time_duration,
         partition=partition,
         account=account,
         reservation=reservation,
-        sc_config_commands=sc_config_commands,
-        function_id=function_id,
+        container_module_command=container_module_command
     )
+    container_builder_shell = ShellFunction(build_container_script)
+
+    function_id = globus_compute_client.register_function(
+        container_builder_shell
+    )
+    container_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_id,function_id=function_id)
 
     database.save_container(
         container_task_id=container_task_id,
@@ -346,12 +412,21 @@ def get_build_log():
     globus_compute_client = initialize_globus_compute_client()
 
     # Get parameters from request
-    log_file_path = request.args.get("log_path")
+    container_name = request.args.get("container_name")
     endpoint_id = request.args.get("endpoint_id")
     build_task_id = request.args.get("task_id")  # Original build task ID
-    log_task_id = request.args.get("log_task_id")  # Previous log reader task ID
+    log_task_id = request.args.get("log_task_id")  # Previous log reader 
+    log_type = request.args.get("log_type")
+    logger.info(f"Log type: {log_type}")
 
-    if not log_file_path or not endpoint_id:
+    location = database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    log_file_path = ""
+    if log_type == 'stdout':
+        log_file_path = location + "/logs" + "/" + container_name + ".stdout"
+    elif log_type == 'stderr':
+        log_file_path = location + "/logs" + "/" + container_name + ".stderr"
+
+    if not log_file_path:
         return jsonify({"error": "Missing required parameters"}), 400
 
     try:
@@ -470,7 +545,6 @@ def diamond_endpoint_submit_job():
     account = request.json.get("account")
     reservation = request.json.get("reservation")
     container = request.json.get("container")
-    log_path = request.json.get("log_path")
     task = request.json.get("task")
     num_of_nodes = request.json.get("num_of_nodes")
     time_duration = request.json.get("time_duration")
@@ -489,25 +563,27 @@ def diamond_endpoint_submit_job():
     )
 
     globus_compute_client = initialize_globus_compute_client()
-    sc_config_commands = ""
-    if database.get_endpoint_host(endpoint_uuid=endpoint_id) == "tacc-frontera":
-        sc_config_commands = "module load tacc-apptainer"
-    function_id = globus_compute_client.register_function(submit_task)
-    # job_status_func_id = globus_compute_client.register_function(get_job_status)
+    location = database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    stdout_path = location + "/logs" + "/" + task_name + ".stdout"
+    stderr_path = location + "/logs" + "/" + task_name + ".stderr"
 
-    task_id = globus_compute_client.run(
+    endpoint_host = database.get_endpoint_host(endpoint_uuid=endpoint_id)
+    container_module_command = load_container_module_command(endpoint_host)
+    submit_task_script = render_submit_task_script(
+        task_name=task_name,
+        location=location,
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
+        time_duration=time_duration,
         partition=partition,
         account=account,
         reservation=reservation,
-        container=container_path + "/" + container + ".sif",
-        container_path=container_path,
-        task=task,
-        log_path=log_path,
-        num_of_nodes=num_of_nodes,
-        time_duration=time_duration,
-        task_name=task_name,
+        container_module_command=container_module_command
+    )
+    submit_task_shell = ShellFunction(submit_task_script)
+    function_id = globus_compute_client.register_function(submit_task_shell)
+    task_id = globus_compute_client.run(
         endpoint_id=endpoint_id,
-        sc_config_commands=sc_config_commands,
         function_id=function_id,
     )
     # Wait for submit task to complete with timeout to prevent hanging indefinitely
@@ -560,9 +636,8 @@ def diamond_endpoint_submit_job():
         identity_id=identity_id,
         task_status="submitted",
         task_create_time=datetime.now(),
-        log_path=log_path,
-        stdout_path="",  # Will be set by backend
-        stderr_path="",  # Will be set by backend
+        stdout_path=stdout_path,
+        stderr_path=stderr_path,
         compute_endpoint_id=endpoint_id,
         checkpoint_path="",  # Will be set by backend
     )
@@ -583,7 +658,6 @@ def diamond_get_task_status():
     globus_compute_client = initialize_globus_compute_client()
 
     tasks = database.load_tasks(identity_id=identity_id)
-    # task_status_changed = False
 
     for task in tasks:
         task_id = task.task_id
@@ -612,7 +686,6 @@ def diamond_get_task_status():
             task.task_status = task.task_status
         else:
             task.task_status = task_status
-            # task_status_changed = True
         logger.info(task_status)
 
         database.update_task_status(task.task_id, task.task_status)
@@ -633,7 +706,7 @@ def diamond_get_task_status():
                 ),
                 "task_create_time": task.task_create_time,
             },
-            "result": task.log_path,
+            "result": task.stdout_path,
         }
         for task in updated_tasks
     }

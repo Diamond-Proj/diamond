@@ -1,0 +1,5 @@
+{
+    "machine": "tacc-ls6",
+    "container_type": "apptainer",
+    "container_module_command": "module load tacc-apptainer"
+}

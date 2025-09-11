@@ -1,0 +1,5 @@
+{
+    "machine": "ncsa-delta",
+    "container_type": "apptainer",
+    "container_module_command": ""
+}

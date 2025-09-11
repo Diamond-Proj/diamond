@@ -65,6 +65,7 @@ class Database:
         identity_id=None,
         task_status=None,
         task_create_time=None,
+        # TODO: Remove log_path
         log_path=None,
         stdout_path=None,
         stderr_path=None,
@@ -258,4 +259,21 @@ class Database:
             logger.error(
                 f"Endpoint not found for user {identity_id} and UUID {endpoint_uuid}"
             )
+            return None
+
+    def save_diamond_dir(self, endpoint_uuid, diamond_dir):
+        # TODO: Use both identity_id and endpoint_uuid to save the diamond_dir
+        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            endpoint.diamond_dir = diamond_dir
+            db.session.commit()
+        else:
+            logger.error(f"Endpoint not found for UUID {endpoint_uuid}")
+
+    def get_diamond_dir(self, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+        if endpoint:
+            return endpoint.diamond_dir
+        else:
+            logger.error(f"Endpoint not found for UUID {endpoint_uuid}")
             return None

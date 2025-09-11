@@ -1,0 +1,18 @@
+cat << EOF > {{ location }}/{{ container_name }}.submit
+#!/bin/bash
+
+#SBATCH --job-name={{ container_name }}
+#SBATCH --output={{ stdout_path }}
+#SBATCH --error={{ stderr_path }}
+#SBATCH --time={{ time_duration }}
+#SBATCH --partition={{ partition }}
+#SBATCH --account={{ account }}
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --exclusive
+
+{{ container_module_command }}
+apptainer build {{ location }}/{{ container_name }}.sif {{ location }}/{{ container_name }}.def
+EOF
+
+sbatch {{ reservation }} {{ location }}/{{ container_name }}.submit
