@@ -18,7 +18,7 @@ def register_all_endpoints(
 
     for endpoint in endpoints:
         logger.info(f"Checking endpoint: {endpoint}")
-        endpoint_name = endpoint["name"]
+        endpoint_name = endpoint["display_name"]
         endpoint_uuid = endpoint["uuid"]
         try:
             endpoint_status = globus_compute_client.get_endpoint_status(
