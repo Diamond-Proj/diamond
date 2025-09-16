@@ -123,7 +123,12 @@ def diamond_list_all_endpoints():
                 "diamond_dir": endpoint.diamond_dir,
             }
         )
-    return all_endpoints
+
+    sorted_endpoints = sorted(all_endpoints, key=lambda x: x["endpoint_name"])
+    sorted_active_first_endpoints = sorted(
+        sorted_endpoints, key=lambda x: x["endpoint_status"], reverse=True
+    )
+    return sorted_active_first_endpoints
 
 
 @app.route("/api/list_active_endpoints", methods=["GET"])
@@ -166,27 +171,39 @@ def diamond_set_diamond_work_path():
     diamond_log_dir = diamond_dir + "/logs"
     diamond_image_dir = diamond_dir + "/images"
     globus_compute_client = initialize_globus_compute_client()
-    check_diamond_work_path_func_id = globus_compute_client.register_function(check_diamond_work_path)
+    check_diamond_work_path_func_id = globus_compute_client.register_function(
+        check_diamond_work_path
+    )
     check_diamond_work_path_task_id = globus_compute_client.run(
         endpoint_id=endpoint_uuid,
         function_id=check_diamond_work_path_func_id,
-        diamond_work_path=diamond_work_path
+        diamond_work_path=diamond_work_path,
     )
-    check_diamond_work_path_task_status = globus_compute_client.get_task(check_diamond_work_path_task_id)
+    check_diamond_work_path_task_status = globus_compute_client.get_task(
+        check_diamond_work_path_task_id
+    )
     while check_diamond_work_path_task_status["pending"]:
         time.sleep(2)
-        check_diamond_work_path_task_status = globus_compute_client.get_task(check_diamond_work_path_task_id)
+        check_diamond_work_path_task_status = globus_compute_client.get_task(
+            check_diamond_work_path_task_id
+        )
         continue
-    check_diamond_work_path_task_result = globus_compute_client.get_result(check_diamond_work_path_task_id)
+    check_diamond_work_path_task_result = globus_compute_client.get_result(
+        check_diamond_work_path_task_id
+    )
     if check_diamond_work_path_task_result == 0:
-        return jsonify({"error": "Diamond work path does not exist or is not writable"}), 400
-    create_diamond_dir_func_id = globus_compute_client.register_function(create_diamond_dir)
+        return jsonify(
+            {"error": "Diamond work path does not exist or is not writable"}
+        ), 400
+    create_diamond_dir_func_id = globus_compute_client.register_function(
+        create_diamond_dir
+    )
     globus_compute_client.run(
         endpoint_id=endpoint_uuid,
         function_id=create_diamond_dir_func_id,
         diamond_dir=diamond_dir,
         diamond_log_dir=diamond_log_dir,
-        diamond_image_dir=diamond_image_dir
+        diamond_image_dir=diamond_image_dir,
     )
     database.save_diamond_dir(
         endpoint_uuid=endpoint_uuid,
@@ -346,7 +363,7 @@ def diamond_endpoint_image_builder():
         location=location,
         base_image=base_image,
         commands=commands,
-        environment=environment
+        environment=environment,
     )
     create_apptainer_def_shell = ShellFunction(create_apptainer_def_script)
     def_file_creation_function_id = globus_compute_client.register_function(
@@ -381,15 +398,14 @@ def diamond_endpoint_image_builder():
         partition=partition,
         account=account,
         reservation=reservation,
-        container_module_command=container_module_command
+        container_module_command=container_module_command,
     )
     container_builder_shell = ShellFunction(build_container_script)
 
-    function_id = globus_compute_client.register_function(
-        container_builder_shell
-    )
+    function_id = globus_compute_client.register_function(container_builder_shell)
     container_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_id,function_id=function_id)
+        endpoint_id=endpoint_id, function_id=function_id
+    )
 
     database.save_container(
         container_task_id=container_task_id,
@@ -415,15 +431,15 @@ def get_build_log():
     container_name = request.args.get("container_name")
     endpoint_id = request.args.get("endpoint_id")
     build_task_id = request.args.get("task_id")  # Original build task ID
-    log_task_id = request.args.get("log_task_id")  # Previous log reader 
+    log_task_id = request.args.get("log_task_id")  # Previous log reader
     log_type = request.args.get("log_type")
     logger.info(f"Log type: {log_type}")
 
     location = database.get_diamond_dir(endpoint_uuid=endpoint_id)
     log_file_path = ""
-    if log_type == 'stdout':
+    if log_type == "stdout":
         log_file_path = location + "/logs" + "/" + container_name + ".stdout"
-    elif log_type == 'stderr':
+    elif log_type == "stderr":
         log_file_path = location + "/logs" + "/" + container_name + ".stderr"
 
     if not log_file_path:
@@ -578,7 +594,7 @@ def diamond_endpoint_submit_job():
         partition=partition,
         account=account,
         reservation=reservation,
-        container_module_command=container_module_command
+        container_module_command=container_module_command,
     )
     submit_task_shell = ShellFunction(submit_task_script)
     function_id = globus_compute_client.register_function(submit_task_shell)
