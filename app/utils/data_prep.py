@@ -4,7 +4,7 @@ import time
 from globus_compute_sdk import Client as GlobusComputeClient
 
 from .functions import get_accounts, get_partitions
-from .parsers import resolve_host
+from .host_machine_mapping import resolve_host
 
 
 def register_all_endpoints(
