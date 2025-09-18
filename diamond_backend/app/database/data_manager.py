@@ -6,13 +6,12 @@ import typing as t
 
 from flask import Flask
 
-from app.database.db import db
-from app.database.models.container import Container
-from app.database.models.dataset import Dataset
-from app.database.models.endpoints import Endpoints
-from app.database.models.profile import Profile  # noqa
-from app.database.models.task import Task
-from app.utils.errors import TaskNotFoundError
+from diamond_backend.app.database.db import db
+from diamond_backend.app.database.models.container import Container
+from diamond_backend.app.database.models.dataset import Dataset
+from diamond_backend.app.database.models.endpoints import Endpoints
+from diamond_backend.app.database.models.task import Task
+from diamond_backend.app.utils.errors import TaskNotFoundError
 
 logging.basicConfig(
     level=logging.INFO,

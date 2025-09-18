@@ -3,8 +3,8 @@ import time
 
 from globus_compute_sdk import Client as GlobusComputeClient
 
-from .functions import get_accounts, get_partitions
-from .host_machine_mapping import resolve_host
+from diamond_backend.app.utils.functions import get_accounts, get_partitions
+from diamond_backend.app.utils.host_machine_mapping import resolve_host
 
 
 def register_all_endpoints(

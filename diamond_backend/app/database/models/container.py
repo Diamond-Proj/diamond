@@ -2,7 +2,7 @@
 Container model
 """
 
-from app.database.db import db
+from diamond_backend.app.database.db import db
 
 
 class Container(db.Model):

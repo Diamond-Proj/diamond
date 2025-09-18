@@ -1,6 +1,6 @@
 import json
 
-from app import logger
+from diamond_backend.app import logger
 
 
 def load_container_module_command(machine):

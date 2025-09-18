@@ -44,7 +44,7 @@ ignore = [
 ]
 
 [tool.ruff.lint.isort]
-known-first-party = ["app"]
+known-first-party = ["diamond_backend"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

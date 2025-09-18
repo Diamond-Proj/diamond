@@ -52,14 +52,14 @@ Diamond Admin Backend is an admin Flask server integrating SQLite for database m
    - **Development Mode** (with auto-reload):
 
      ```bash
-     uv run flask --app run:app run --debug
+     uv run flask --app diamond_backend.run:app --debug
      ```
 
      This uses Flask's built-in server with debug mode enabled.
 
    - **Production Mode** (using Gunicorn):
      ```bash
-     uv run gunicorn wsgi:app
+     uv run gunicorn diamond_backend.wsgi:app
      ```
      Gunicorn settings are configured via `GUNICORN_CMD_ARGS` in `.env`
 

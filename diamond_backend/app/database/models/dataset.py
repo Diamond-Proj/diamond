@@ -2,7 +2,7 @@
 Dataset model
 """
 
-from app.database.db import db
+from diamond_backend.app.database.db import db
 
 
 class Dataset(db.Model):

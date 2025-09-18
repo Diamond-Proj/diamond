@@ -10,7 +10,7 @@ from globus_compute_sdk.sdk.login_manager.manager import ComputeScopeBuilder
 from globus_compute_sdk.serialize import CombinedCode
 from globus_sdk.scopes import AuthScopes
 
-from ..utils.utils import load_portal_client
+from diamond_backend.app.utils.utils import load_portal_client
 
 logging.basicConfig(
     level=logging.INFO,

@@ -9,25 +9,28 @@ from flask import jsonify, redirect, request
 from globus_compute_sdk import ShellFunction
 from globus_compute_sdk.errors import TaskPending
 
-from . import app, database, logger
-from .utils.config_loader import load_container_module_command
-from .utils.data_prep import load_accounts_partitions, register_all_endpoints
-from .utils.decorators import authenticated
-from .utils.functions import (
+from diamond_backend.app import app, database, logger
+from diamond_backend.app.utils.config_loader import load_container_module_command
+from diamond_backend.app.utils.data_prep import (
+    load_accounts_partitions,
+    register_all_endpoints,
+)
+from diamond_backend.app.utils.decorators import authenticated
+from diamond_backend.app.utils.functions import (
     check_diamond_work_path,
     create_diamond_dir,
     get_task_status,
     log_reader_wrapper,
 )
-from .utils.host_machine_mapping import KNOWN_MACHINES
-from .utils.login_flow import initialize_globus_compute_client
-from .utils.scripts_render import (
+from diamond_backend.app.utils.host_machine_mapping import KNOWN_MACHINES
+from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
+from diamond_backend.app.utils.scripts_render import (
     render_apptainer_build_script,
     render_build_container_script,
     render_submit_task_script,
 )
-from .utils.transfer import get_transfer_client
-from .utils.utils import get_git_info
+from diamond_backend.app.utils.transfer import get_transfer_client
+from diamond_backend.app.utils.utils import get_git_info
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")

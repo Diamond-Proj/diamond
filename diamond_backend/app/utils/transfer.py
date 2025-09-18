@@ -3,7 +3,7 @@ import urllib.parse
 
 import globus_sdk
 
-from .. import logger
+from diamond_backend.app import logger
 
 
 def get_transfer_client(request):

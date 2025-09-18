@@ -4,7 +4,7 @@ from functools import wraps
 
 from flask import jsonify, redirect, request, session, url_for
 
-from .. import logger
+from diamond_backend.app import logger
 
 
 def authenticated(fn):

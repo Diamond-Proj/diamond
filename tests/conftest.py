@@ -2,7 +2,7 @@ import json
 
 import pytest
 
-from app import app
+from diamond_backend.app import app
 
 
 @pytest.fixture

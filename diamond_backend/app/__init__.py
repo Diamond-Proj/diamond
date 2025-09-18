@@ -7,7 +7,7 @@ from flask import Flask
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
-from .database.data_manager import Database
+from diamond_backend.app.database.data_manager import Database
 
 # Load environment variables first, before any other imports or app creation
 load_dotenv()
@@ -62,7 +62,7 @@ with app.app_context():
 
 # Import routes after app is created to avoid circular imports
 def register_routes():
-    from . import routes as routes
+    from diamond_backend.app import routes as routes
 
 
 register_routes()
