@@ -847,6 +847,14 @@ def diamond_get_task_status():
     return jsonify(tasks_data)
 
 
+@app.route("/api/stats", methods=["GET"])
+@authenticated
+def diamond_get_stats():
+    identity_id = request.cookies.get("primary_identity")
+    stats = database.get_stats(identity_id=identity_id)
+    return jsonify(stats)
+
+
 @app.route("/api/delete_task", methods=["POST"])
 @authenticated
 def diamond_delete_task():

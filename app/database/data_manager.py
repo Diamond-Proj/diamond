@@ -2,6 +2,7 @@
 
 import json
 import logging  # some issue with importing logger from app
+import typing as t
 
 from flask import Flask
 
@@ -280,6 +281,66 @@ class Database:
         else:
             logger.error(f"Endpoint not found for UUID {endpoint_uuid}")
             return None
+
+    def get_stats(self, identity_id) -> dict[str, t.Collection]:
+        """Fetch stats for the dashboard"""
+        user_endpoints = Endpoints.query.filter_by(identity_id=identity_id)
+        user_tasks = Task.query.filter_by(identity_id=identity_id)
+        user_images = Container.query.filter_by(identity_id=identity_id)
+
+        recent_tasks = Task.query.order_by(Task.task_create_time.desc()).limit(10).all()
+        task_summary: list[dict[str, t.Any]] = []
+        for task in recent_tasks:
+            summary = {
+                "name": task.task_name,
+                "task_id": task.task_id,
+                "status": task.task_status,
+                "create_time": task.task_create_time,
+                # TODO: Fix the following once we update task table with last_update_time
+                "last_update_time": task.task_create_time,
+            }
+            task_summary.append(summary)
+
+        stats = {
+            "endpoints": {
+                "online": len(
+                    [ep for ep in user_endpoints if ep.endpoint_status == "online"]
+                ),
+                "offline": len(
+                    [ep for ep in user_endpoints if ep.endpoint_status == "offline"]
+                ),
+            },
+            "tasks": {
+                "completed": len(
+                    [
+                        t
+                        for t in user_tasks
+                        if str(t.task_status).upper() in ("COMPLETING", "COMPLETED")
+                    ]
+                ),
+                "running": len(
+                    [
+                        t
+                        for t in user_tasks
+                        if str(t.task_status).upper()
+                        in ("PENDING", "RUNNING", "SUBMITTED")
+                    ]
+                ),
+                "failed": len(
+                    [t for t in user_tasks if str(t.task_status).upper() in ("FAILED")]
+                ),
+            },
+            "images": {
+                "public": 0,
+                "private": len(user_images.all()),
+            },
+            # Pending datasets PR merge
+            "datasets": {"public": 0, "private": 0},
+            # Recent tasks will return a list of upto 10 tasks
+            "recent_tasks": task_summary,
+        }
+
+        return stats
 
     def save_dataset(
         self,
