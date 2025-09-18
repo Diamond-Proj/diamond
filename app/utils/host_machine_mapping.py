@@ -1,21 +1,23 @@
 import re
 from typing import Optional
 
+# Mapping of hostname patterns to human-readable machine names
+KNOWN_MACHINES = [
+    (r"\.delta\.ncsa\.", "Delta@NCSA"),
+    (r"\.frontera\.tacc\.", "Frontera@NCSA"),
+    (r"\.ls6\.tacc\.", "Lonestar6@TACC"),
+    (r"\.anvil\.rcac\.purdue\.edu", "Anvil@RCAC"),
+    (r"\.tacc\.utexas\.edu", "System@TACC"),
+    (r"\.ncsa\.illinois\.edu", "System@NCSA"),
+]
+
 
 def resolve_host(hostname: Optional[str]) -> str:
     if hostname is None:
         return "unknown"
-    if re.search(r"\.frontera\.tacc\.", hostname):
-        return "Frontera@TACC"
-    elif re.search(r"\.delta\.ncsa\.", hostname):
-        return "Delta@NCSA"
-    elif re.search(r"\.ls6\.tacc\.", hostname):
-        return "Lonestar6@TACC"
-    elif re.search(r"\.anvil\.rcac\.purdue\.edu", hostname):
-        return "Anvil@RCAC"
-    elif re.search(r"\.tacc\.utexas\.edu", hostname):
-        return "tacc-system"
-    elif re.search(r"\.ncsa\.illinois\.edu", hostname):
-        return "ncsa-system"
-    else:
-        return "unknown"
+
+    for pattern, machine_name in KNOWN_MACHINES:
+        if re.search(pattern, hostname):
+            return machine_name
+
+    return "unknown"
