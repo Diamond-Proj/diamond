@@ -25,6 +25,7 @@ dev = [
     "pre-commit>=4.2.0",
     "pytest>=8.4.1",
     "pytest-cov>=6.2.1",
+    "pytest-env>=1.1.5",
     "ruff>=0.12.7",
     "tox>=4.28.3",
 ]
@@ -49,3 +50,7 @@ known-first-party = ["app"]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_functions = ["test_*"]
+env = [
+    "SQLALCHEMY_DATABASE_URI=sqlite:///:memory:",
+    "FLASK_ENV=testing"
+]

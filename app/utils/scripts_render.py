@@ -10,13 +10,13 @@ def render_apptainer_build_script(
     commands,
     environment,
 ):
-    apptainer_build_template = env.get_template("create_apptainer_def.j2") 
+    apptainer_build_template = env.get_template("create_apptainer_def.j2")
     apptainer_build_script = apptainer_build_template.render(
         container_name=container_name,
         location=location,
         base_image=base_image,
         commands=commands,
-        environment=environment
+        environment=environment,
     )
     return apptainer_build_script
 
@@ -42,7 +42,7 @@ def render_build_container_script(
         partition=partition,
         account=account,
         reservation=reservation,
-        container_module_command=container_module_command
+        container_module_command=container_module_command,
     )
     return build_container_script
 
@@ -68,6 +68,6 @@ def render_submit_task_script(
         partition=partition,
         account=account,
         reservation=reservation,
-        container_module_command=container_module_command
+        container_module_command=container_module_command,
     )
     return submit_task_script

@@ -15,10 +15,14 @@ get_container_status = ShellFunction('squeue --name={name} -h -o "%T"')
 get_task_status = ShellFunction('squeue --name={task_name} -h -o "%T"')
 
 
-check_diamond_work_path = ShellFunction('if [ -d {diamond_work_path} ] && [ -w {diamond_work_path} ]; then echo 1; else echo 0; fi')
+check_diamond_work_path = ShellFunction(
+    "if [ -d {diamond_work_path} ] && [ -w {diamond_work_path} ]; then echo 1; else echo 0; fi"
+)
 
 
-create_diamond_dir = ShellFunction('mkdir -p {diamond_dir} && mkdir -p {diamond_log_dir} && mkdir -p {diamond_image_dir}')
+create_diamond_dir = ShellFunction(
+    "mkdir -p {diamond_dir} && mkdir -p {diamond_log_dir} && mkdir -p {diamond_image_dir}"
+)
 
 
 def log_reader_wrapper(log_file_path):

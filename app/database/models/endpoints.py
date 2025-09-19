@@ -12,16 +12,16 @@ class Endpoints(db.Model):
     diamond_dir = db.Column(db.String(255), nullable=True)
 
     def __init__(
-            self,
-            identity_id,
-            endpoint_name,
-            endpoint_host,
-            endpoint_uuid,
-            endpoint_status,
-            partitions=None,
-            accounts=None,
-            diamond_dir=None,
-        ):
+        self,
+        identity_id,
+        endpoint_name,
+        endpoint_host,
+        endpoint_uuid,
+        endpoint_status,
+        partitions=None,
+        accounts=None,
+        diamond_dir=None,
+    ):
         self.identity_id = identity_id
         self.endpoint_name = endpoint_name
         self.endpoint_host = endpoint_host

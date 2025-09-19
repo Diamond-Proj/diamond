@@ -1,12 +1,15 @@
 """Manage access to the database."""
 
+import json
 import logging  # some issue with importing logger from app
 
 from flask import Flask
 
 from app.database.db import db
 from app.database.models.container import Container
+from app.database.models.dataset import Dataset
 from app.database.models.endpoints import Endpoints
+from app.database.models.profile import Profile  # noqa
 from app.database.models.task import Task
 from app.utils.errors import TaskNotFoundError
 
@@ -277,3 +280,38 @@ class Database:
         else:
             logger.error(f"Endpoint not found for UUID {endpoint_uuid}")
             return None
+
+    def save_dataset(
+        self,
+        collection_uuid,
+        dataset_path,
+        machine_name,
+        dataset_metadata,
+        identity_id,
+        public=False,
+    ):
+        logger.info(
+            f"Saving dataset: {collection_uuid}:{dataset_path} for user {identity_id}"
+        )
+
+        if not isinstance(dataset_metadata, str):
+            dataset_metadata = json.dumps(dataset_metadata)
+
+        dataset = Dataset(
+            collection_uuid=collection_uuid,
+            dataset_path=dataset_path,
+            public=public,
+            machine_name=machine_name,
+            dataset_metadata=dataset_metadata,
+            identity_id=identity_id,
+        )
+        db.session.merge(dataset)
+        db.session.commit()
+
+    def get_datasets(self, identity_id) -> list[Dataset]:
+        logger.info(f"Loading datasets for identity_id: {identity_id}")
+
+        user_datasets = Dataset.query.filter_by(identity_id=identity_id).all()
+        public_datasets = Dataset.query.filter_by(public=True).all()
+
+        return user_datasets + public_datasets

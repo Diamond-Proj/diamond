@@ -33,11 +33,11 @@ if NEXT_URL != "http://localhost:3000":
 
 # print("Allowed Origins: ", allowed_origins)
 
-is_production = os.environ.get("FLASK_ENV") == "production"
+flask_env = os.environ.get("FLASK_ENV", "development")
 
 # Load configuration based on environment
-if is_production:
-    config = dict(os.environ)  # Only OS environment variables in production
+if flask_env in ("production", "testing"):
+    config = dict(os.environ)  # OS environment variables in production/testing
 else:
     config = dotenv_values()  # Only .env file variables in local development
 
