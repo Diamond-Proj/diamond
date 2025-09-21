@@ -287,7 +287,13 @@ class Database:
         user_tasks = Task.query.filter_by(identity_id=identity_id)
         user_images = Container.query.filter_by(identity_id=identity_id)
 
-        recent_tasks = Task.query.order_by(Task.task_create_time.desc()).limit(10).all()
+        recent_tasks = (
+            Task.query.filter_by(identity_id=identity_id)
+            .order_by(Task.task_create_time.desc())
+            .limit(10)
+            .all()
+        )
+
         task_summary: list[dict[str, t.Any]] = []
         for task in recent_tasks:
             summary = {
