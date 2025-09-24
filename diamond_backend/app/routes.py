@@ -224,7 +224,7 @@ def _validate_dataset_registration(
     if not data:
         return "No JSON data provided", 400
 
-    required_fields = ["collection_uuid", "dataset_path", "machine_name"]
+    required_fields = ["collection_uuid", "globus_path", "system_path", "machine_name"]
     for field in required_fields:
         if field not in data:
             return f"Missing required field: {field}", 400
@@ -280,7 +280,8 @@ def register_user_dataset():
         # Save dataset (public is always False for user datasets)
         database.save_dataset(
             collection_uuid=data["collection_uuid"],
-            dataset_path=data["dataset_path"],
+            globus_path=data["globus_path"],
+            system_path=data["system_path"],
             machine_name=data["machine_name"],
             dataset_metadata=data.get("dataset_metadata", "{}"),
             identity_id=identity_id,
@@ -317,7 +318,8 @@ def list_registered_datasets():
                 {
                     "id": dataset.id,
                     "collection_uuid": dataset.collection_uuid,
-                    "dataset_path": dataset.dataset_path,
+                    "globus_path": dataset.globus_path,
+                    "system_path": dataset.system_path,
                     "public": dataset.public,
                     "machine_name": dataset.machine_name,
                     "dataset_metadata": dataset.dataset_metadata,

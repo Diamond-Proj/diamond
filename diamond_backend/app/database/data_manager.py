@@ -350,14 +350,15 @@ class Database:
     def save_dataset(
         self,
         collection_uuid,
-        dataset_path,
+        globus_path,
+        system_path,
         machine_name,
         dataset_metadata,
         identity_id,
         public=False,
     ):
         logger.info(
-            f"Saving dataset: {collection_uuid}:{dataset_path} for user {identity_id}"
+            f"Saving dataset: {collection_uuid}:{globus_path} for user {identity_id}"
         )
 
         if not isinstance(dataset_metadata, str):
@@ -365,7 +366,8 @@ class Database:
 
         dataset = Dataset(
             collection_uuid=collection_uuid,
-            dataset_path=dataset_path,
+            globus_path=globus_path,
+            system_path=system_path,
             public=public,
             machine_name=machine_name,
             dataset_metadata=dataset_metadata,
