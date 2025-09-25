@@ -1,0 +1,5 @@
+{
+    "machine": "Frontera@TACC",
+    "container_type": "apptainer",
+    "container_module_command": "module load tacc-apptainer"
+}
