@@ -163,21 +163,31 @@ def diamond_list_active_endpoints():
 @app.route("/api/get_diamond_dir", methods=["GET"])
 @authenticated
 def diamond_get_diamond_dir():
-    # TODO: Use both identity_id and endpoint_uuid to get the diamond_dir
-    # identity_id = request.cookies.get("primary_identity")
+    identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.args.get("endpoint_uuid")
-    diamond_dir = g_database.get_diamond_dir(endpoint_uuid=endpoint_uuid)
+    diamond_dir = g_database.get_diamond_dir(
+        identity_id=identity_id, endpoint_uuid=endpoint_uuid
+    )
     return jsonify({"diamond_dir": diamond_dir})
 
 
 @app.route("/api/set_diamond_work_path", methods=["POST"])
 @authenticated
 def diamond_set_diamond_work_path():
+    identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.json.get("endpoint_uuid")
     diamond_work_path = request.json.get("diamond_work_path")
-    diamond_dir = diamond_work_path + "/diamond"
-    diamond_log_dir = diamond_dir + "/logs"
-    diamond_image_dir = diamond_dir + "/images"
+
+    # Handle diamond path logic: if path ends with "diamond", don't add it again
+    if diamond_work_path.endswith("diamond"):
+        diamond_dir = diamond_work_path
+        diamond_log_dir = os.path.join(diamond_work_path, "logs")
+        diamond_image_dir = os.path.join(diamond_work_path, "images")
+    else:
+        diamond_dir = os.path.join(diamond_work_path, "diamond")
+        diamond_log_dir = os.path.join(diamond_dir, "logs")
+        diamond_image_dir = os.path.join(diamond_dir, "images")
+
     globus_compute_client = initialize_globus_compute_client()
     check_diamond_work_path_func_id = globus_compute_client.register_function(
         check_diamond_work_path
@@ -213,7 +223,9 @@ def diamond_set_diamond_work_path():
         diamond_log_dir=diamond_log_dir,
         diamond_image_dir=diamond_image_dir,
     )
+
     g_database.save_diamond_dir(
+        identity_id=identity_id,
         endpoint_uuid=endpoint_uuid,
         diamond_dir=diamond_dir,
     )
@@ -480,7 +492,9 @@ def diamond_endpoint_image_builder():
     )
     # First we create the def file using ShellFunction.
     globus_compute_client = initialize_globus_compute_client()
-    location = g_database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    location = g_database.get_diamond_dir(
+        endpoint_uuid=endpoint_id, identity_id=identity_id
+    )
     stdout_path = os.path.join(location, "logs", name + ".stdout")
     stderr_path = os.path.join(location, "logs", name + ".stderr")
 
@@ -559,9 +573,12 @@ def get_build_log():
     build_task_id = request.args.get("task_id")  # Original build task ID
     log_task_id = request.args.get("log_task_id")  # Previous log reader
     log_type = request.args.get("log_type")
+    identity_id = request.cookies.get("primary_identity")
     logger.info(f"Log type: {log_type}")
 
-    location = g_database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    location = g_database.get_diamond_dir(
+        endpoint_uuid=endpoint_id, identity_id=identity_id
+    )
     log_file_path = ""
     if log_type == "stdout":
         log_file_path = location + "/logs" + "/" + container_name + ".stdout"
@@ -705,7 +722,9 @@ def diamond_endpoint_submit_job():
     )
 
     globus_compute_client = initialize_globus_compute_client()
-    location = g_database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    location = g_database.get_diamond_dir(
+        endpoint_uuid=endpoint_id, identity_id=identity_id
+    )
     stdout_path = location + "/logs" + "/" + task_name + ".stdout"
     stderr_path = location + "/logs" + "/" + task_name + ".stderr"
 
