@@ -28,6 +28,7 @@ dev = [
     "pytest-env>=1.1.5",
     "ruff>=0.12.7",
     "tox>=4.28.3",
+    "sqlalchemy[mypy]"
 ]
 
 [tool.ruff]

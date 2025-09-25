@@ -71,13 +71,19 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
             openid_token = value.get("access_token")
 
     ComputeScopes = ComputeScopeBuilder()
+
+    # TODO: Reevaluate the choice for authorizers here, some of these components
+    #       are now deprecated
+    assert funcx_service_token, "Missing access token for scope:funcx_service"
     compute_auth = globus_sdk.AccessTokenAuthorizer(funcx_service_token)
+
+    assert openid_token, "Missing access token for scope:openid"
     openid_auth = globus_sdk.AccessTokenAuthorizer(openid_token)
 
     compute_login_manager = AuthorizerLoginManager(
         authorizers={
-            ComputeScopes.resource_server: compute_auth,
-            AuthScopes.resource_server: openid_auth,
+            ComputeScopes.resource_server: compute_auth,  # type: ignore[dict-item]
+            AuthScopes.resource_server: openid_auth,  # type: ignore[dict-item]
         }
     )
     compute_login_manager.ensure_logged_in()

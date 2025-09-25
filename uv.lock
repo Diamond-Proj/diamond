@@ -215,6 +215,7 @@ dev = [
     { name = "pytest-cov" },
     { name = "pytest-env" },
     { name = "ruff" },
+    { name = "sqlalchemy", extra = ["mypy"] },
     { name = "tox" },
 ]
 
@@ -242,6 +243,7 @@ dev = [
     { name = "pytest-cov", specifier = ">=6.2.1" },
     { name = "pytest-env", specifier = ">=1.1.5" },
     { name = "ruff", specifier = ">=0.12.7" },
+    { name = "sqlalchemy", extras = ["mypy"] },
     { name = "tox", specifier = ">=4.28.3" },
 ]
 
@@ -896,6 +898,11 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/16/ed/b9c4a939b314400f43f972c9eb0091da59d8466ef9c51d0fd5b449edc495/sqlalchemy-2.0.42-cp311-cp311-win32.whl", hash = "sha256:2eb539fd83185a85e5fcd6b19214e1c734ab0351d81505b0f987705ba0a1e231", size = 2098513, upload-time = "2025-07-29T13:23:58.946Z" },
     { url = "https://files.pythonhosted.org/packages/91/72/55b0c34e39feb81991aa3c974d85074c356239ac1170dfb81a474b4c23b3/sqlalchemy-2.0.42-cp311-cp311-win_amd64.whl", hash = "sha256:9193fa484bf00dcc1804aecbb4f528f1123c04bad6a08d7710c909750fa76aeb", size = 2123380, upload-time = "2025-07-29T13:24:00.155Z" },
     { url = "https://files.pythonhosted.org/packages/ee/55/ba2546ab09a6adebc521bf3974440dc1d8c06ed342cceb30ed62a8858835/sqlalchemy-2.0.42-py3-none-any.whl", hash = "sha256:defcdff7e661f0043daa381832af65d616e060ddb54d3fe4476f51df7eaa1835", size = 1922072, upload-time = "2025-07-29T13:09:17.061Z" },
+]
+
+[package.optional-dependencies]
+mypy = [
+    { name = "mypy" },
 ]
 
 [[package]]
