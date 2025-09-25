@@ -54,3 +54,9 @@ env = [
     "SQLALCHEMY_DATABASE_URI=sqlite:///:memory:",
     "FLASK_ENV=testing"
 ]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+diamond_backend = ["app/data/config/*json", "app/data/template/*json"]

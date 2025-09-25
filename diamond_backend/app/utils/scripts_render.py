@@ -1,6 +1,10 @@
+import importlib.resources as resources
+from importlib.resources import as_file
+
 from jinja2 import Environment, FileSystemLoader
 
-env = Environment(loader=FileSystemLoader("app/data/template"))
+with as_file(resources.files("diamond_backend").joinpath("app/data/template")) as fpath:
+    env = Environment(loader=FileSystemLoader(fpath))
 
 
 def render_apptainer_build_script(
