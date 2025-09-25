@@ -10,6 +10,7 @@ from diamond_backend.app.database.db import db
 from diamond_backend.app.database.models.container import Container
 from diamond_backend.app.database.models.dataset import Dataset
 from diamond_backend.app.database.models.endpoints import Endpoints
+from diamond_backend.app.database.models.profile import Profile  # noqa: F401
 from diamond_backend.app.database.models.task import Task
 from diamond_backend.app.utils.errors import TaskNotFoundError
 
