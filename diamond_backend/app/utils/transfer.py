@@ -1,9 +1,10 @@
 import json
+import logging
 import urllib.parse
 
 import globus_sdk
 
-from diamond_backend.app import logger
+logger = logging.getLogger(__name__)
 
 
 def get_transfer_client(request):

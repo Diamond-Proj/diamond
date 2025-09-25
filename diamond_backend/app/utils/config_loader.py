@@ -1,7 +1,8 @@
 import importlib.resources as resources
 import json
+import logging
 
-from diamond_backend.app import logger
+logger = logging.getLogger(__name__)
 
 
 def load_container_module_command(machine):

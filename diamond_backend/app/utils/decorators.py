@@ -1,10 +1,11 @@
 import json
+import logging
 import urllib.parse  # Add this import for URL decoding
 from functools import wraps
 
 from flask import jsonify, redirect, request, session, url_for
 
-from diamond_backend.app import logger
+logger = logging.getLogger(__name__)
 
 
 def authenticated(fn):

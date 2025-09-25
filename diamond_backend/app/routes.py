@@ -1,9 +1,9 @@
 import json
+import logging
 import os
 import re
 import time
 from datetime import datetime
-from logging import getLogger
 
 import globus_sdk
 from flask import jsonify, redirect, request
@@ -33,7 +33,7 @@ from diamond_backend.app.utils.scripts_render import (
 from diamond_backend.app.utils.transfer import get_transfer_client
 from diamond_backend.app.utils.utils import get_git_info
 
-logger = getLogger(__name__)
+logger = logging.getLogger(__name__)
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
