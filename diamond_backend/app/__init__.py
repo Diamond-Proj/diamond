@@ -33,16 +33,21 @@ if NEXT_URL != "http://localhost:3000":
 
 # print("Allowed Origins: ", allowed_origins)
 
-flask_env = os.environ.get("FLASK_ENV", "development")
+env_kind = os.environ.get("FLASK_ENV")
 
 # Load configuration based on environment
-if flask_env in ("production", "testing"):
-    config = dict(os.environ)  # OS environment variables in production/testing
+if env_kind == "production":
+    config = dict(os.environ)  # Only OS environment variables in production
+elif env_kind == "development":
+    # Load from .env file for local development
+    config = dotenv_values()  # type: ignore[assignment]
+elif env_kind == "pytest":
+    config = dict(os.environ)  # os.environ pull from tox.ini for pytests
 else:
-    config = dotenv_values()  # Only .env file variables in local development
+    raise Exception(f"Environment:{env_kind} is not supported")
 
 app = Flask(__name__)
-app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)
+app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1, x_host=1)  # type: ignore[method-assign]
 
 CORS(
     app,
@@ -57,7 +62,7 @@ basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 # print("sql url: ", app.config["SQLALCHEMY_DATABASE_URI"])
 
 with app.app_context():
-    database = Database(app)
+    g_database = Database(app)
 
 
 # Import routes after app is created to avoid circular imports

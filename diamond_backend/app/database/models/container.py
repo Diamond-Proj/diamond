@@ -5,7 +5,7 @@ Container model
 from diamond_backend.app.database.db import db
 
 
-class Container(db.Model):
+class Container(db.Model):  # type: ignore[name-defined]
     container_task_id = db.Column(db.String)
     container_status = db.Column(db.String)
     identity_id = db.Column(db.String(255), db.ForeignKey("profile.identity_id"))

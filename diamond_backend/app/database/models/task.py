@@ -7,7 +7,7 @@ from sqlalchemy import func
 from diamond_backend.app.database.db import db
 
 
-class Task(db.Model):
+class Task(db.Model):  # type: ignore[name-defined]
     task_id = db.Column(db.String, primary_key=True)
     batch_job_id = db.Column(db.String)  # SLURM job ID
     task_name = db.Column(db.String)

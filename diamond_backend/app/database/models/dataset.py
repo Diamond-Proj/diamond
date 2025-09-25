@@ -5,7 +5,7 @@ Dataset model
 from diamond_backend.app.database.db import db
 
 
-class Dataset(db.Model):
+class Dataset(db.Model):  # type: ignore[name-defined]
     id = db.Column(db.Integer, primary_key=True)
     identity_id = db.Column(db.String(255), db.ForeignKey("profile.identity_id"))
     collection_uuid = db.Column(db.String(36), nullable=False)  # Globus collection UUID

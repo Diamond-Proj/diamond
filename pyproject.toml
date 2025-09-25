@@ -28,7 +28,7 @@ dev = [
     "pytest-env>=1.1.5",
     "ruff>=0.12.7",
     "tox>=4.28.3",
-    "sqlalchemy[mypy]"
+    "sqlalchemy[mypy]",
 ]
 
 [tool.ruff]
@@ -51,10 +51,6 @@ known-first-party = ["diamond_backend"]
 testpaths = ["tests"]
 python_files = ["test_*.py", "*_test.py"]
 python_functions = ["test_*"]
-env = [
-    "SQLALCHEMY_DATABASE_URI=sqlite:///:memory:",
-    "FLASK_ENV=testing"
-]
 
 [tool.setuptools]
 include-package-data = true

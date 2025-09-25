@@ -1,7 +1,7 @@
 from diamond_backend.app.database.db import db
 
 
-class Endpoints(db.Model):
+class Endpoints(db.Model):  # type: ignore[name-defined]
     identity_id = db.Column(db.String(255), primary_key=True)
     endpoint_name = db.Column(db.String(255), nullable=False)
     endpoint_host = db.Column(db.String(255), nullable=False)

@@ -3,13 +3,14 @@ import os
 import re
 import time
 from datetime import datetime
+from logging import getLogger
 
 import globus_sdk
 from flask import jsonify, redirect, request
 from globus_compute_sdk import ShellFunction
 from globus_compute_sdk.errors import TaskPending
 
-from diamond_backend.app import app, database, logger
+from diamond_backend.app import app, g_database
 from diamond_backend.app.utils.config_loader import load_container_module_command
 from diamond_backend.app.utils.data_prep import (
     load_accounts_partitions,
@@ -31,6 +32,8 @@ from diamond_backend.app.utils.scripts_render import (
 )
 from diamond_backend.app.utils.transfer import get_transfer_client
 from diamond_backend.app.utils.utils import get_git_info
+
+logger = getLogger(__name__)
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
@@ -89,7 +92,7 @@ def diamond_register_all_endpoints():
     globus_compute_client = initialize_globus_compute_client()
     # Register endpoints and get all endpoints in one step
     all_endpoints = register_all_endpoints(
-        globus_compute_client, identity_id, database, logger
+        globus_compute_client, identity_id, g_database, logger
     )
     return jsonify({"status": "success", "endpoints": all_endpoints}), 200
 
@@ -102,7 +105,7 @@ def diamond_load_accounts_partitions():
     endpoint_uuid = request.json.get("endpoint_uuid")
     globus_compute_client = initialize_globus_compute_client()
     account_list, partition_list = load_accounts_partitions(
-        endpoint_uuid, identity_id, database, logger, globus_compute_client
+        endpoint_uuid, identity_id, g_database, logger, globus_compute_client
     )
     return jsonify(
         {
@@ -118,7 +121,7 @@ def diamond_load_accounts_partitions():
 def diamond_list_all_endpoints():
     identity_id = request.cookies.get("primary_identity")
     all_endpoints = []
-    for endpoint in database.get_endpoints(identity_id=identity_id):
+    for endpoint in g_database.get_endpoints(identity_id=identity_id):
         all_endpoints.append(
             {
                 "endpoint_name": endpoint.endpoint_name,
@@ -141,7 +144,7 @@ def diamond_list_all_endpoints():
 def diamond_list_active_endpoints():
     identity_id = request.cookies.get("primary_identity")
     active_endpoints = []
-    for endpoint in database.get_endpoints(identity_id=identity_id):
+    for endpoint in g_database.get_endpoints(identity_id=identity_id):
         if endpoint.endpoint_status == "online":
             active_endpoints.append(
                 {
@@ -163,7 +166,7 @@ def diamond_get_diamond_dir():
     # TODO: Use both identity_id and endpoint_uuid to get the diamond_dir
     # identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.args.get("endpoint_uuid")
-    diamond_dir = database.get_diamond_dir(endpoint_uuid=endpoint_uuid)
+    diamond_dir = g_database.get_diamond_dir(endpoint_uuid=endpoint_uuid)
     return jsonify({"diamond_dir": diamond_dir})
 
 
@@ -210,7 +213,7 @@ def diamond_set_diamond_work_path():
         diamond_log_dir=diamond_log_dir,
         diamond_image_dir=diamond_image_dir,
     )
-    database.save_diamond_dir(
+    g_database.save_diamond_dir(
         endpoint_uuid=endpoint_uuid,
         diamond_dir=diamond_dir,
     )
@@ -278,7 +281,7 @@ def register_user_dataset():
             return jsonify({"error": error_msg}), status_code
 
         # Save dataset (public is always False for user datasets)
-        database.save_dataset(
+        g_database.save_dataset(
             collection_uuid=data["collection_uuid"],
             globus_path=data["globus_path"],
             system_path=data["system_path"],
@@ -310,7 +313,7 @@ def list_registered_datasets():
         if not identity_id:
             return jsonify({"error": "No identity ID found"}), 400
 
-        datasets = database.get_datasets(identity_id)
+        datasets = g_database.get_datasets(identity_id)
 
         # Format datasets for JSON response
         datasets_data = []
@@ -429,7 +432,7 @@ def initiate_transfer():
 @app.route("/api/list_partitions", methods=["POST"])
 @authenticated
 def diamond_get_partitions():
-    partition_list = database.get_partitions(
+    partition_list = g_database.get_partitions(
         identity_id=request.cookies.get("primary_identity"),
         endpoint_uuid=request.json.get("endpoint"),
     )
@@ -439,7 +442,7 @@ def diamond_get_partitions():
 @app.route("/api/list_accounts", methods=["POST"])
 @authenticated
 def diamond_get_accounts():
-    account_list = database.get_accounts(
+    account_list = g_database.get_accounts(
         identity_id=request.cookies.get("primary_identity"),
         endpoint_uuid=request.json.get("endpoint"),
     )
@@ -477,7 +480,7 @@ def diamond_endpoint_image_builder():
     )
     # First we create the def file using ShellFunction.
     globus_compute_client = initialize_globus_compute_client()
-    location = database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    location = g_database.get_diamond_dir(endpoint_uuid=endpoint_id)
     stdout_path = os.path.join(location, "logs", name + ".stdout")
     stderr_path = os.path.join(location, "logs", name + ".stderr")
 
@@ -510,7 +513,7 @@ def diamond_endpoint_image_builder():
     if reservation and reservation != "":
         reservation = "--reservation=" + reservation
 
-    endpoint_host = database.get_endpoint_host(endpoint_uuid=endpoint_id)
+    endpoint_host = g_database.get_endpoint_host(endpoint_uuid=endpoint_id)
     container_module_command = load_container_module_command(endpoint_host)
     build_container_script = render_build_container_script(
         container_name=name,
@@ -530,7 +533,7 @@ def diamond_endpoint_image_builder():
         endpoint_id=endpoint_id, function_id=function_id
     )
 
-    database.save_container(
+    g_database.save_container(
         container_task_id=container_task_id,
         identity_id=identity_id,
         name=name,
@@ -558,7 +561,7 @@ def get_build_log():
     log_type = request.args.get("log_type")
     logger.info(f"Log type: {log_type}")
 
-    location = database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    location = g_database.get_diamond_dir(endpoint_uuid=endpoint_id)
     log_file_path = ""
     if log_type == "stdout":
         log_file_path = location + "/logs" + "/" + container_name + ".stdout"
@@ -648,7 +651,7 @@ def get_build_log():
 def get_containers():
     identity_id = request.cookies.get("primary_identity")
     logger.info(f"Loading containers for identity_id: {identity_id}")
-    containers = database.load_containers(identity_id=identity_id)
+    containers = g_database.load_containers(identity_id=identity_id)
     containers_data = {}
     for container in containers:
         logger.info(f"container task_id: {container.container_task_id}")
@@ -670,7 +673,7 @@ def get_containers():
 @authenticated
 def diamond_delete_container():
     container_id = request.json.get("containerId")
-    database.delete_container(container_id)
+    g_database.delete_container(container_id)
     logger.info(f"container {container_id} deleted")
     return jsonify({"message": "Container deleted successfully"})
 
@@ -696,17 +699,17 @@ def diamond_endpoint_submit_job():
     if reservation and reservation != "":
         reservation = "--reservation=" + reservation
 
-    container_path = database.get_container_path_by_name(container)
+    container_path = g_database.get_container_path_by_name(container)
     logger.info(
         f"Submit task container path: {container_path + '/' + container + '.sif'}"
     )
 
     globus_compute_client = initialize_globus_compute_client()
-    location = database.get_diamond_dir(endpoint_uuid=endpoint_id)
+    location = g_database.get_diamond_dir(endpoint_uuid=endpoint_id)
     stdout_path = location + "/logs" + "/" + task_name + ".stdout"
     stderr_path = location + "/logs" + "/" + task_name + ".stderr"
 
-    endpoint_host = database.get_endpoint_host(endpoint_uuid=endpoint_id)
+    endpoint_host = g_database.get_endpoint_host(endpoint_uuid=endpoint_id)
     container_module_command = load_container_module_command(endpoint_host)
     submit_task_script = render_submit_task_script(
         task_name=task_name,
@@ -768,7 +771,7 @@ def diamond_endpoint_submit_job():
     slurm_job_id = match.group(1)
     logger.info(f"SLURM job ID: {slurm_job_id}")
 
-    database.save_task(
+    g_database.save_task(
         task_id=task_id,
         batch_job_id=slurm_job_id,
         task_name=task_name,
@@ -796,7 +799,7 @@ def diamond_get_task_status():
     identity_id = request.cookies.get("primary_identity")
     globus_compute_client = initialize_globus_compute_client()
 
-    tasks = database.load_tasks(identity_id=identity_id)
+    tasks = g_database.load_tasks(identity_id=identity_id)
 
     for task in tasks:
         task_id = task.task_id
@@ -827,10 +830,10 @@ def diamond_get_task_status():
             task.task_status = task_status
         logger.info(task_status)
 
-        database.update_task_status(task.task_id, task.task_status)
+        g_database.update_task_status(task.task_id, task.task_status)
 
     # Reload the updated tasks from the database
-    updated_tasks = database.load_tasks(identity_id=identity_id)
+    updated_tasks = g_database.load_tasks(identity_id=identity_id)
 
     # Format tasks data for JSON response
     tasks_data = {
@@ -858,7 +861,7 @@ def diamond_get_task_status():
 @authenticated
 def diamond_get_stats():
     identity_id = request.cookies.get("primary_identity")
-    stats = database.get_stats(identity_id=identity_id)
+    stats = g_database.get_stats(identity_id=identity_id)
     return jsonify(stats)
 
 
@@ -866,7 +869,7 @@ def diamond_get_stats():
 @authenticated
 def diamond_delete_task():
     task_id = request.json.get("taskId")
-    database.delete_task(task_id)
+    g_database.delete_task(task_id)
     logger.info(f"task {task_id} deleted")
     return jsonify({"message": "Task deleted successfully"})
 

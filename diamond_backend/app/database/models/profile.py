@@ -5,7 +5,7 @@ Profile model
 from diamond_backend.app.database.db import db
 
 
-class Profile(db.Model):
+class Profile(db.Model):  # type: ignore[name-defined]
     identity_id = db.Column(db.String(255), primary_key=True)
     name = db.Column(db.String(255))
     email = db.Column(db.String(255))
