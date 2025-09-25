@@ -286,6 +286,7 @@ def register_user_dataset():
             dataset_metadata=data.get("dataset_metadata", "{}"),
             identity_id=identity_id,
             public=False,
+            dataset_name=data.get("dataset_name"),
         )
 
         return jsonify(
@@ -322,6 +323,7 @@ def list_registered_datasets():
                     "system_path": dataset.system_path,
                     "public": dataset.public,
                     "machine_name": dataset.machine_name,
+                    "dataset_name": dataset.dataset_name,
                     "dataset_metadata": dataset.dataset_metadata,
                 }
             )

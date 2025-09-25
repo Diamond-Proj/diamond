@@ -357,6 +357,7 @@ class Database:
         dataset_metadata,
         identity_id,
         public=False,
+        dataset_name=None,
     ):
         logger.info(
             f"Saving dataset: {collection_uuid}:{globus_path} for user {identity_id}"
@@ -373,6 +374,7 @@ class Database:
             machine_name=machine_name,
             dataset_metadata=dataset_metadata,
             identity_id=identity_id,
+            dataset_name=dataset_name,
         )
         db.session.merge(dataset)
         db.session.commit()
