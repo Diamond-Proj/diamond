@@ -59,6 +59,40 @@ def test_db(
         g_database.save_endpoint(test_identity, *test_endpoint_frontera)
         g_database.save_endpoint(test_identity, *test_endpoint_anvil)
         g_database.save_endpoint(test_identity, *test_endpoint_delta)
+        g_database.save_container(identity_id=test_identity, name="TestContainer1")
+        g_database.save_container(identity_id=test_identity, name="TestContainer2")
+        g_database.save_container(identity_id=test_identity, name="TestContainer3")
+        g_database.save_dataset(
+            str(uuid.uuid4()),
+            "globus_path",
+            "system_path",
+            "Anvil@RCAC",
+            None,
+            test_identity,
+            public=False,
+            dataset_name="Test_Data_1",
+        )
+        g_database.save_dataset(
+            str(uuid.uuid4()),
+            "globus_path",
+            "system_path",
+            "Anvil@RCAC",
+            None,
+            test_identity,
+            public=False,
+            dataset_name="Test_Data_2",
+        )
+        g_database.save_dataset(
+            str(uuid.uuid4()),
+            "globus_path",
+            "system_path",
+            "Anvil@RCAC",
+            None,
+            test_identity,
+            public=True,
+            dataset_name="Test_Data_3",
+        )
+
         yield g_database
         # No cleanup necessary since we are writing to an in-memory db for tests
 

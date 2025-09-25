@@ -295,6 +295,10 @@ class Database:
             .all()
         )
 
+        priv_datasets = Dataset.query.filter_by(identity_id=identity_id).filter_by(
+            public=False
+        )
+        pub_datasets = Dataset.query.filter_by(public=True)
         task_summary: list[dict[str, t.Any]] = []
         for task in recent_tasks:
             summary = {
@@ -341,7 +345,10 @@ class Database:
                 "private": len(user_images.all()),
             },
             # Pending datasets PR merge
-            "datasets": {"public": 0, "private": 0},
+            "datasets": {
+                "public": len(pub_datasets.all()),
+                "private": len(priv_datasets.all()),
+            },
             # Recent tasks will return a list of upto 10 tasks
             "recent_tasks": task_summary,
         }
