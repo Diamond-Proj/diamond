@@ -11,8 +11,16 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
 
+export DIAMOND_DATASET_PATH={{ dataset_system_path }}
+if [[ -z "{{ dataset_system_path }}" ]]; then
+    echo "No dataset specified"
+    mount_string=""
+else
+    mount_string="--bind {{ dataset_system_path }}"
+fi
+
 {{ container_module_command }}
-srun apptainer exec --nv {{ container }} {{ task }}
+srun apptainer exec $mount_string --nv {{ container }} {{ task }}
 EOF
 
 sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit

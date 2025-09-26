@@ -702,13 +702,15 @@ def diamond_endpoint_submit_job():
     task_name = request.json.get("taskName")
     partition = request.json.get("partition")
     account = request.json.get("account")
-    reservation = request.json.get("reservation")
+    reservation = request.json.get("reservation", "")
     container = request.json.get("container")
     task = request.json.get("task")
-    num_of_nodes = request.json.get("num_of_nodes")
+    num_of_nodes = request.json.get("num_of_nodes", "1")  # 1 node is a safe default
     time_duration = request.json.get("time_duration")
     # max_retries = request.json.get("max_retries", 3)  # Default to 3 retries
     identity_id = request.cookies.get("primary_identity")
+    dataset_id = request.json.get("dataset_id")
+
     if not num_of_nodes:
         num_of_nodes = 1
     if task is None:
@@ -717,6 +719,11 @@ def diamond_endpoint_submit_job():
         reservation = "--reservation=" + reservation
 
     container_path = g_database.get_container_path_by_name(container)
+    if dataset_id:
+        dataset_system_path = g_database.get_dataset_by_id(dataset_id).system_path
+    else:
+        dataset_system_path = ""
+
     logger.info(
         f"Submit task container path: {container_path + '/' + container + '.sif'}"
     )
@@ -740,6 +747,7 @@ def diamond_endpoint_submit_job():
         account=account,
         reservation=reservation,
         container_module_command=container_module_command,
+        dataset_system_path=dataset_system_path,
     )
     submit_task_shell = ShellFunction(submit_task_script)
     function_id = globus_compute_client.register_function(submit_task_shell)

@@ -400,3 +400,7 @@ class Database:
         public_datasets = Dataset.query.filter_by(public=True).all()
 
         return user_datasets + public_datasets
+
+    def get_dataset_by_id(self, dataset_id) -> Dataset:
+        dataset = Dataset.query.filter_by(id=dataset_id).first()
+        return dataset
