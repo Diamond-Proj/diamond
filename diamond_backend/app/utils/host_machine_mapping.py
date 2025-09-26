@@ -4,7 +4,7 @@ from typing import Optional
 # Mapping of hostname patterns to human-readable machine names
 KNOWN_MACHINES = [
     (r"\.delta\.ncsa\.", "Delta@NCSA"),
-    (r"\.frontera\.tacc\.", "Frontera@NCSA"),
+    (r"\.frontera\.tacc\.", "Frontera@TACC"),
     (r"\.ls6\.tacc\.", "Lonestar6@TACC"),
     (r"\.anvil\.rcac\.purdue\.edu", "Anvil@RCAC"),
     (r"\.tacc\.utexas\.edu", "System@TACC"),
