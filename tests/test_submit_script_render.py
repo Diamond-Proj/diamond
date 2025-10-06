@@ -6,7 +6,7 @@ expected_output_1 = """cat << EOF > /dev/shm/Foo.submit
 #SBATCH --job-name=Foo
 #SBATCH --output=/dev/shm/stdout
 #SBATCH --error=/dev/shm/stderr
-#SBATCH --nodes=
+#SBATCH --nodes=1
 #SBATCH --time=00:10:00
 #SBATCH --partition=development
 #SBATCH --account=testing_account
@@ -38,6 +38,7 @@ def test_render():
         partition="development",
         account="testing_account",
         reservation="",
+        num_of_nodes=1,
         container_module_command="",
         dataset_system_path="",
     )
@@ -50,7 +51,7 @@ expected_output_2 = """cat << EOF > /dev/shm/Foo.submit
 #SBATCH --job-name=Foo
 #SBATCH --output=/dev/shm/stdout
 #SBATCH --error=/dev/shm/stderr
-#SBATCH --nodes=
+#SBATCH --nodes=1
 #SBATCH --time=00:10:00
 #SBATCH --partition=development
 #SBATCH --account=testing_account
@@ -83,6 +84,7 @@ def test_render_with_dataset():
         time_duration="00:10:00",
         partition="development",
         account="testing_account",
+        num_of_nodes=1,
         reservation=None,
         container_module_command=container_module_command,
         dataset_system_path=dataset_system_path,

@@ -60,6 +60,7 @@ def render_submit_task_script(
     partition,
     account,
     reservation,
+    num_of_nodes,
     container_module_command,
     dataset_system_path,
 ):
@@ -73,6 +74,7 @@ def render_submit_task_script(
         partition=partition,
         account=account,
         reservation=reservation,
+        num_of_nodes=num_of_nodes,
         container_module_command=container_module_command,
         dataset_system_path=dataset_system_path,
     )

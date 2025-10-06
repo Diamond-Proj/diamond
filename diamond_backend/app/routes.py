@@ -711,8 +711,6 @@ def diamond_endpoint_submit_job():
     identity_id = request.cookies.get("primary_identity")
     dataset_id = request.json.get("dataset_id")
 
-    if not num_of_nodes:
-        num_of_nodes = 1
     if task is None:
         task = ""
     if reservation and reservation != "":
@@ -746,6 +744,7 @@ def diamond_endpoint_submit_job():
         partition=partition,
         account=account,
         reservation=reservation,
+        num_of_nodes=num_of_nodes,
         container_module_command=container_module_command,
         dataset_system_path=dataset_system_path,
     )
