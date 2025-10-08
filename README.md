@@ -1,5 +1,7 @@
 # Diamond Admin Backend
 
+[![codecov](https://codecov.io/github/Diamond-Proj/diamond-admin-backend/graph/badge.svg?token=9RNM7KHVNG)](https://codecov.io/github/Diamond-Proj/diamond-admin-backend)
+
 ## Overview
 
 Diamond Admin Backend is an admin Flask server integrating SQLite for database management and Globus Auth for authentication.
