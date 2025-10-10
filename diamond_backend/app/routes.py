@@ -20,6 +20,7 @@ from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
     check_diamond_work_path,
     create_diamond_dir,
+    get_task_log,
     get_task_status,
     log_reader_wrapper,
 )
@@ -704,34 +705,32 @@ def diamond_endpoint_submit_job():
     account = request.json.get("account")
     reservation = request.json.get("reservation", "")
     container = request.json.get("container")
-    task = request.json.get("task")
+    task_command = request.json.get("task", "")
     num_of_nodes = request.json.get("num_of_nodes", "1")  # 1 node is a safe default
     time_duration = request.json.get("time_duration")
     # max_retries = request.json.get("max_retries", 3)  # Default to 3 retries
     identity_id = request.cookies.get("primary_identity")
     dataset_id = request.json.get("dataset_id")
 
-    if task is None:
-        task = ""
     if reservation and reservation != "":
         reservation = "--reservation=" + reservation
 
-    container_path = g_database.get_container_path_by_name(container)
     if dataset_id:
         dataset_system_path = g_database.get_dataset_by_id(dataset_id).system_path
     else:
         dataset_system_path = ""
 
-    logger.info(
-        f"Submit task container path: {container_path + '/' + container + '.sif'}"
-    )
+    container_dir_path = g_database.get_container_path_by_name(container)
+    container_path = os.path.join(container_dir_path, container + ".sif")
+    logger.info(f"Submit task container path: {container_path}")
 
     globus_compute_client = initialize_globus_compute_client()
     location = g_database.get_diamond_dir(
         endpoint_uuid=endpoint_id, identity_id=identity_id
     )
-    stdout_path = location + "/logs" + "/" + task_name + ".stdout"
-    stderr_path = location + "/logs" + "/" + task_name + ".stderr"
+
+    stdout_path = os.path.join(location, "logs", task_name + ".stdout")
+    stderr_path = os.path.join(location, "logs", task_name + ".stderr")
 
     endpoint_host = g_database.get_endpoint_host(endpoint_uuid=endpoint_id)
     container_module_command = load_container_module_command(endpoint_host)
@@ -746,7 +745,9 @@ def diamond_endpoint_submit_job():
         reservation=reservation,
         num_of_nodes=num_of_nodes,
         container_module_command=container_module_command,
+        container=container_path,
         dataset_system_path=dataset_system_path,
+        task_command=task_command,
     )
     submit_task_shell = ShellFunction(submit_task_script)
     function_id = globus_compute_client.register_function(submit_task_shell)
@@ -760,7 +761,9 @@ def diamond_endpoint_submit_job():
     for _ in range(max_attempts):
         try:
             submit_result = globus_compute_client.get_result(task_id)
+            logger.info(f"Submit result: {globus_compute_client.get_task(task_id)}")
         except TaskPending:
+            time.sleep(2)
             continue
         except Exception:
             logger.exception("Failed to fetch results for task_id: %s", task_id)
@@ -875,12 +878,41 @@ def diamond_get_task_status():
                 "task_create_time": task.task_create_time,
             },
             "result": task.stdout_path,
+            "error": task.stderr_path,
         }
         for task in updated_tasks
     }
 
     logger.info(f"Updated task status response: {tasks_data}")
     return jsonify(tasks_data)
+
+
+@app.route("/api/get_task_log", methods=["GET"])
+@authenticated
+def diamond_get_task_log():
+    endpoint_id = request.args.get("endpoint_id")
+    log_path = request.args.get("log_path")
+
+    globus_compute_client = initialize_globus_compute_client()
+    get_task_log_func_id = globus_compute_client.register_function(get_task_log)
+    get_task_log_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_id,
+        function_id=get_task_log_func_id,
+        log_file_path=log_path,
+    )
+    max_attempts = 5
+    for _ in range(max_attempts):
+        try:
+            log_content = globus_compute_client.get_result(get_task_log_task_id)[
+                "content"
+            ]
+            logger.info(f"Log content: {log_content}")
+            break
+        except TaskPending:
+            # TODO: remove sleep
+            time.sleep(2)
+            continue
+    return jsonify({"log_content": log_content})
 
 
 @app.route("/api/stats", methods=["GET"])

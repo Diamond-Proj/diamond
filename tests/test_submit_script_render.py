@@ -22,7 +22,9 @@ else
 fi
 
 
-srun apptainer exec $mount_string --nv
+srun apptainer exec $mount_string --nv dummy.sif python test.py
+echo "EOF" >> /dev/shm/stdout
+echo "EOF" >> /dev/shm/stderr
 EOF
 
 sbatch /dev/shm/Foo.submit"""
@@ -39,8 +41,10 @@ def test_render():
         account="testing_account",
         reservation="",
         num_of_nodes=1,
+        container="dummy.sif",
         container_module_command="",
         dataset_system_path="",
+        task_command="python test.py",
     )
     assert script.replace(" ", "") == expected_output_1.replace(" ", "")
 
@@ -67,7 +71,9 @@ else
 fi
 
 module load apptainer
-srun apptainer exec $mount_string --nv
+srun apptainer exec $mount_string --nv dummy.sif python test.py
+echo "EOF" >> /dev/shm/stdout
+echo "EOF" >> /dev/shm/stderr
 EOF
 
 sbatch None /dev/shm/Foo.submit"""
@@ -86,8 +92,10 @@ def test_render_with_dataset():
         account="testing_account",
         num_of_nodes=1,
         reservation=None,
+        container="dummy.sif",
         container_module_command=container_module_command,
         dataset_system_path=dataset_system_path,
+        task_command="python test.py",
     )
     assert container_module_command in script
     assert dataset_system_path in script

@@ -62,7 +62,9 @@ def render_submit_task_script(
     reservation,
     num_of_nodes,
     container_module_command,
+    container,
     dataset_system_path,
+    task_command,
 ):
     submit_task_template = env.get_template("submit_task.j2")
     submit_task_script = submit_task_template.render(
@@ -76,6 +78,8 @@ def render_submit_task_script(
         reservation=reservation,
         num_of_nodes=num_of_nodes,
         container_module_command=container_module_command,
+        container=container,
         dataset_system_path=dataset_system_path,
+        task_command=task_command,
     )
     return submit_task_script

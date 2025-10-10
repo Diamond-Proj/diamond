@@ -25,6 +25,7 @@ create_diamond_dir = ShellFunction(
 )
 
 
+# TODO: merge two log reader functions
 def log_reader_wrapper(log_file_path):
     """Wrapper function to read log file content"""
     try:
@@ -32,6 +33,20 @@ def log_reader_wrapper(log_file_path):
             content = f.read()
             # Check if build is complete
             is_complete = "INFO:    Build complete:" in content
+            return {"content": content, "is_complete": is_complete}
+    except Exception as e:
+        return {
+            "content": f"Error reading log file: {str(e)}",
+            "is_complete": False,
+            "error": str(e),
+        }
+
+
+def get_task_log(log_file_path, eof_flag="EOF"):
+    try:
+        with open(log_file_path, "r") as f:
+            content = f.read()
+            is_complete = content.endswith(eof_flag)
             return {"content": content, "is_complete": is_complete}
     except Exception as e:
         return {

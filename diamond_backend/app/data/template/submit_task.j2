@@ -20,7 +20,9 @@ else
 fi
 
 {{ container_module_command }}
-srun apptainer exec $mount_string --nv {{ container }} {{ task }}
+srun apptainer exec $mount_string --nv {{ container }} {{ task_command }}
+echo "EOF" >> {{ stdout_path }}
+echo "EOF" >> {{ stderr_path }}
 EOF
 
 sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit
