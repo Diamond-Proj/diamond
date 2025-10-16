@@ -49,16 +49,34 @@ class Database:
         with self.app.app_context():
             db.create_all()
 
-    def save_profile(self, identity_id=None, name=None, email=None, institution=None):
+    def save_profile(
+        self,
+        identity_id=None,
+        name=None,
+        email=None,
+        institution=None,
+        is_initialized=False,
+    ):
         logger.info(f"Saving profile: {name}, {email}, {institution}")
         profile = Profile(
-            identity_id=identity_id, name=name, email=email, institution=institution
+            identity_id=identity_id,
+            name=name,
+            email=email,
+            institution=institution,
+            is_initialized=is_initialized,
         )
         db.session.merge(profile)
         db.session.commit()
 
+    def set_profile_initialization_state(
+        self, identity_id=None, initialized: bool = True
+    ):
+        profile = Profile.query.filter_by(identity_id=identity_id).first()
+        profile.is_initialized = initialized
+        db.session.commit()
+
     def load_profile(self, identity_id):
-        logger.info(f"Loading profile: {identity_id}")
+        logger.debug(f"Loading profile: {identity_id}")
         return Profile.query.filter_by(identity_id=identity_id).first()
 
     def save_task(
