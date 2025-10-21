@@ -11,8 +11,10 @@ from globus_compute_sdk import ShellFunction
 from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import app, g_database
+from diamond_backend.app.errors import DiamondResponseError, RequestMalformed
 from diamond_backend.app.utils.config_loader import load_container_module_command
 from diamond_backend.app.utils.data_prep import (
+    endpoint_initialization_status,
     load_accounts_partitions,
     register_all_endpoints,
 )
@@ -45,6 +47,13 @@ logger.info(f"HOST in routes.py: {HOST}")
 logger.info(f"AUTH_URL in routes.py: {AUTH_URL}")
 logger.info(f"NEXT_URL in routes.py: {NEXT_URL}")
 logger.info(f"RAILWAY_GIT_COMMIT_SHA in routes.py: {RAILWAY_GIT_COMMIT_SHA}")
+
+
+@app.errorhandler(DiamondResponseError)
+def handle_custom_api_error(error):
+    response = jsonify(error.to_dict())
+    response.status_code = error.http_status_code
+    return response
 
 
 @app.route("/api/home", methods=["GET"])
@@ -930,6 +939,52 @@ def diamond_delete_task():
     g_database.delete_task(task_id)
     logger.info(f"task {task_id} deleted")
     return jsonify({"message": "Task deleted successfully"})
+
+
+@app.route("/api/endpoint_overview", methods=["GET"])
+@authenticated
+def get_endpoint_management_overview():
+    """Returns a dict of all endpoints from Globus Compute API and internal DB
+    Returns:
+        Dict: {<endpoint_uuid>: {name: <ep_name>, is_managed: <bool>}, ...}
+    """
+
+    identity_id = request.cookies.get("primary_identity")
+    globus_compute_client = initialize_globus_compute_client()
+    logger.info(f"Endpoint management overview for f{identity_id} requested")
+    return endpoint_initialization_status(
+        globus_compute_client, identity_id, g_database
+    )
+
+
+@app.route("/api/manage_endpoint/<endpoint_uuid>", methods=["PUT"])
+@authenticated
+def update_endpoint_managed_status(endpoint_uuid: str):
+    """Allows updating the is_managed status of specific endpoints
+
+    Returns:
+        {"message": <user_string>, "new_status": <bool>}
+    """
+    identity_id = request.cookies["primary_identity"]
+
+    try:
+        is_managed: bool = request.json["is_managed"]  # type: ignore[index]
+        assert isinstance(is_managed, bool)
+    except KeyError:
+        raise RequestMalformed("Missing JSON field 'is_managed'")
+
+    logger.info(f"Endpoint management update for f{endpoint_uuid} requested")
+
+    g_database.update_endpoint_managed_status(
+        identity_id=identity_id, endpoint_uuid=endpoint_uuid, is_managed=is_managed
+    )
+
+    return jsonify(
+        {
+            "message": f"Endpoint:{endpoint_uuid} managed status updated to {is_managed}",
+            "new_status": is_managed,
+        }
+    )
 
 
 if __name__ == "__main__":

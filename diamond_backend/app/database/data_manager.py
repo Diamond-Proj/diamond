@@ -12,6 +12,7 @@ from diamond_backend.app.database.models.dataset import Dataset
 from diamond_backend.app.database.models.endpoints import Endpoints
 from diamond_backend.app.database.models.profile import Profile  # noqa: F401
 from diamond_backend.app.database.models.task import Task
+from diamond_backend.app.errors import EndpointNotFound
 from diamond_backend.app.utils.errors import TaskNotFoundError
 
 logging.basicConfig(
@@ -184,12 +185,20 @@ class Database:
         Container.query.filter_by(container_task_id=container_task_id).delete()
         db.session.commit()
 
-    def exists_endpoint(self, endpoint_uuid):
-        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+    def exists_endpoint(self, identity_id, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(
+            identity_id=identity_id, endpoint_uuid=endpoint_uuid
+        ).first()
         return endpoint is not None
 
     def save_endpoint(
-        self, identity_id, endpoint_name, endpoint_host, endpoint_uuid, endpoint_status
+        self,
+        identity_id,
+        endpoint_name,
+        endpoint_host,
+        endpoint_uuid,
+        endpoint_status,
+        is_managed: bool = False,
     ):
         logger.info(
             f"Saving endpoint: {endpoint_name}, {endpoint_host}, {endpoint_uuid}"
@@ -200,9 +209,26 @@ class Database:
             endpoint_host=endpoint_host,
             endpoint_uuid=endpoint_uuid,
             endpoint_status=endpoint_status,
+            is_managed=is_managed,
         )
         db.session.merge(endpoint)
         db.session.commit()
+
+    def update_endpoint_managed_status(
+        self, identity_id, endpoint_uuid, is_managed: bool = True
+    ):
+        endpoint = Endpoints.query.filter_by(
+            identity_id=identity_id, endpoint_uuid=endpoint_uuid
+        ).first()
+        if endpoint:
+            endpoint.is_managed = is_managed
+            db.session.commit()
+        else:
+            raise EndpointNotFound(
+                "Requested endpoint not found",
+                identity_id=identity_id,
+                endpoint_uuid=endpoint_uuid,
+            )
 
     def get_endpoints(self, identity_id):
         return Endpoints.query.filter_by(identity_id=identity_id).all()

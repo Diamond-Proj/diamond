@@ -28,10 +28,12 @@ mock_token = {
     },
 }
 
+TEST_IDENTITY = "TEST_IDENTITY_1"
+
 
 @pytest.fixture(scope="session")
 def test_identity():
-    return "TEST_IDENTITY_1"
+    return TEST_IDENTITY
 
 
 @pytest.fixture(scope="session")
@@ -49,7 +51,7 @@ def test_endpoint_frontera(test_identity) -> tuple:
     return ("TEST_EP3", "login.frontera.tacc.edu", str(uuid.uuid4()), "offline")
 
 
-@pytest.fixture(scope="session")
+@pytest.fixture(scope="session", autouse=True)
 def test_db(
     test_identity, test_endpoint_anvil, test_endpoint_delta, test_endpoint_frontera
 ) -> Database:
@@ -59,6 +61,16 @@ def test_db(
         g_database.save_endpoint(test_identity, *test_endpoint_frontera)
         g_database.save_endpoint(test_identity, *test_endpoint_anvil)
         g_database.save_endpoint(test_identity, *test_endpoint_delta)
+        g_database.update_endpoint_managed_status(
+            test_identity, test_endpoint_anvil[2], is_managed=True
+        )
+        g_database.update_endpoint_managed_status(
+            test_identity, test_endpoint_delta[2], is_managed=True
+        )
+        g_database.update_endpoint_managed_status(
+            test_identity, test_endpoint_frontera[2], is_managed=False
+        )
+
         g_database.save_container(identity_id=test_identity, name="TestContainer1")
         g_database.save_container(identity_id=test_identity, name="TestContainer2")
         g_database.save_container(identity_id=test_identity, name="TestContainer3")

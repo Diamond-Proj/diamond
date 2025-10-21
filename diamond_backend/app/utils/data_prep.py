@@ -3,8 +3,33 @@ import time
 
 from globus_compute_sdk import Client as GlobusComputeClient
 
+from diamond_backend.app.database.data_manager import Database
 from diamond_backend.app.utils.functions import get_accounts, get_partitions
 from diamond_backend.app.utils.host_machine_mapping import resolve_host
+
+
+def endpoint_initialization_status(
+    global_compute_client: GlobusComputeClient,
+    identity_id: str,
+    database: Database,
+) -> dict[str, dict[str, str | bool]]:
+    """This method returns a list of all endpoints and their current user selection state"""
+
+    all_endpoints = global_compute_client.get_endpoints(role="any")
+    endpoints_in_db = database.get_endpoints(identity_id=identity_id)
+
+    endpoint_map = {}
+    for endpoint in all_endpoints:
+        endpoint_map[endpoint["uuid"]] = {
+            "name": endpoint["display_name"],
+            "is_managed": False,
+        }
+
+    for endpoint in endpoints_in_db:
+        if endpoint.endpoint_uuid in endpoint_map:
+            endpoint_map[endpoint.endpoint_uuid]["is_managed"] = endpoint.is_managed
+
+    return endpoint_map
 
 
 def register_all_endpoints(
@@ -34,7 +59,9 @@ def register_all_endpoints(
             endpoint_uuid=endpoint_uuid
         )
         endpoint_host = resolve_host(endpoint_metadata["hostname"])
-        if not database.exists_endpoint(endpoint_uuid=endpoint_uuid):
+        if not database.exists_endpoint(
+            identity_id=identity_id, endpoint_uuid=endpoint_uuid
+        ):
             logger.info(f"Saving endpoint: {endpoint_name}")
             database.save_endpoint(
                 identity_id=identity_id,
