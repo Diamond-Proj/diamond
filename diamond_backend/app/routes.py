@@ -12,7 +12,10 @@ from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import DiamondResponseError, RequestMalformed
-from diamond_backend.app.utils.config_loader import load_container_module_command
+from diamond_backend.app.utils.config_loader import (
+    load_container_module_command,
+    load_partitions,
+)
 from diamond_backend.app.utils.data_prep import (
     endpoint_initialization_status,
     load_accounts_partitions,
@@ -454,10 +457,16 @@ def initiate_transfer():
 @app.route("/api/list_partitions", methods=["POST"])
 @authenticated
 def diamond_get_partitions():
-    partition_list = g_database.get_partitions(
-        identity_id=request.cookies.get("primary_identity"),
-        endpoint_uuid=request.json.get("endpoint"),
+    # try to get the partitions from the config file, if not found, get from the database
+    endpoint_host = g_database.get_endpoint_host(
+        endpoint_uuid=request.json.get("endpoint")
     )
+    partition_list = load_partitions(endpoint_host)
+    if not partition_list:
+        partition_list = g_database.get_partitions(
+            identity_id=request.cookies.get("primary_identity"),
+            endpoint_uuid=request.json.get("endpoint"),
+        )
     return jsonify(partition_list)
 
 

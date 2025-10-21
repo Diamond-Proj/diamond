@@ -1,5 +1,6 @@
 {
     "machine": "Frontera@TACC",
     "container_type": "apptainer",
-    "container_module_command": "module load tacc-apptainer"
+    "container_module_command": "module load tacc-apptainer",
+    "partitions": ["development", "flex", "large", "normal", "nvdimm", "rtx", "rtx-dev", "small"]
 }

@@ -1,10 +1,14 @@
-import concurrent.futures
+import json
+import logging
 import time
+from typing import Dict, List, Tuple
 
 from globus_compute_sdk import Client as GlobusComputeClient
+from globus_sdk import ComputeAPIError
 
 from diamond_backend.app.database.data_manager import Database
-from diamond_backend.app.utils.functions import get_accounts, get_partitions
+from diamond_backend.app.utils.config_loader import load_partitions
+from diamond_backend.app.utils.functions import get_machine_metadata
 from diamond_backend.app.utils.host_machine_mapping import resolve_host
 
 
@@ -86,98 +90,140 @@ def register_all_endpoints(
     return all_endpoints
 
 
-def _get_endpoint_partitions(
-    endpoint_uuid, globus_compute_client, get_partitions_func_id, logger
-):
-    partitions_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_uuid,
-        function_id=get_partitions_func_id,
-    )
-    partitions_task_status = globus_compute_client.get_task(partitions_task_id)
-    while partitions_task_status["pending"]:
-        time.sleep(2)
-        partitions_task_status = globus_compute_client.get_task(partitions_task_id)
-        continue
-    partitions_result = globus_compute_client.get_result(partitions_task_id)
-    partitions_output = partitions_result.stdout
-    partition_list = [p for p in partitions_output.split("\n") if p]
-    logger.info(f"Partitions output for {endpoint_uuid}: {partition_list}")
-    return endpoint_uuid, partition_list
+def _get_endpoint_machine_metadata(
+    endpoint_uuid: str,
+    globus_compute_client: GlobusComputeClient,
+    metadata_func_id: str,
+    logger: logging.Logger,
+) -> Dict:
+    """Get machine metadata for an endpoint"""
+    try:
+        metadata_task_id = globus_compute_client.run(
+            endpoint_id=endpoint_uuid,
+            function_id=metadata_func_id,
+        )
+    except ComputeAPIError as e:
+        logger.error(
+            f"Error running metadata function for endpoint {endpoint_uuid}: {e}"
+        )
+        return {}
+
+    metadata_task_status = globus_compute_client.get_task(metadata_task_id)
+    for _ in range(10):
+        if metadata_task_status["pending"]:
+            time.sleep(2)
+            metadata_task_status = globus_compute_client.get_task(metadata_task_id)
+        else:
+            break
+    metadata_result = globus_compute_client.get_result(metadata_task_id)
+    metadata_output = metadata_result.stdout
+
+    if not metadata_output:
+        logger.error(f"No metadata output returned for endpoint {endpoint_uuid}")
+        return {}
+
+    try:
+        metadata = json.loads(metadata_output)
+    except json.JSONDecodeError as exc:
+        logger.error(
+            f"Unable to decode metadata for endpoint {endpoint_uuid}: {exc}. "
+            f"Raw output: {metadata_output}"
+        )
+        raise
+
+    logger.info(f"Metadata output for {endpoint_uuid}: {metadata}")
+    return metadata
 
 
-def _get_endpoint_accounts(
-    endpoint_uuid, globus_compute_client, accounts_func_id, logger
-):
-    accounts_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_uuid,
-        function_id=accounts_func_id,
-    )
-    accounts_task_status = globus_compute_client.get_task(accounts_task_id)
-    while accounts_task_status["pending"]:
-        time.sleep(2)
-        accounts_task_status = globus_compute_client.get_task(accounts_task_id)
-        continue
-    accounts_result = globus_compute_client.get_result(accounts_task_id)
-    accounts_output = accounts_result.stdout
-    account_list = [a for a in accounts_output.split("\n") if a]
-    logger.info(f"Accounts output for {endpoint_uuid}: {account_list}")
-    return endpoint_uuid, account_list
+def _get_partitions_from_config(
+    endpoint_uuid: str,
+    endpoint_metadata: Dict,
+    logger: logging.Logger,
+) -> List[str] | None:
+    """Try to get partitions from config file first"""
+    try:
+        endpoint_host = resolve_host(endpoint_metadata["hostname"])
+        if endpoint_host == "unknown":
+            logger.info(f"Unknown host for endpoint {endpoint_uuid}, cannot use config")
+            return None
+
+        partitions = load_partitions(endpoint_host)
+        # TODO: add partitions to all supported machines
+        logger.info(f"Found partitions in config for {endpoint_host}: {partitions}")
+        return partitions
+    except Exception as e:
+        logger.warning(
+            f"Error loading partitions from config for endpoint {endpoint_uuid}: {e}"
+        )
+        return None
 
 
 def load_accounts_partitions(
-    endpoint_uuid, identity_id, database, logger, globus_compute_client
-):
+    endpoint_uuid: str,
+    identity_id: str,
+    database: Database,
+    logger: logging.Logger,
+    globus_compute_client: GlobusComputeClient,
+) -> Tuple[List[str], List[str]]:
     """Load accounts and partitions for an endpoint"""
-    get_partitions_func_id = globus_compute_client.register_function(get_partitions)
-    accounts_func_id = globus_compute_client.register_function(get_accounts)
-
-    with concurrent.futures.ThreadPoolExecutor() as executor:
-        # Start account and partition tasks in parallel
-        account_future = executor.submit(
-            _get_endpoint_accounts,
-            endpoint_uuid,
-            globus_compute_client,
-            accounts_func_id,
-            logger,
+    try:
+        endpoint_metadata = globus_compute_client.get_endpoint_metadata(
+            endpoint_uuid=endpoint_uuid
         )
+    except ComputeAPIError as e:
+        logger.error(f"Error getting endpoint metadata for {endpoint_uuid}: {e}")
+        return [], []
 
-        partition_future = executor.submit(
-            _get_endpoint_partitions,
-            endpoint_uuid,
-            globus_compute_client,
-            get_partitions_func_id,
-            logger,
+    configured_partitions = _get_partitions_from_config(
+        endpoint_uuid,
+        endpoint_metadata,
+        logger,
+    )
+
+    metadata_func_id = globus_compute_client.register_function(get_machine_metadata)
+    metadata = _get_endpoint_machine_metadata(
+        endpoint_uuid,
+        globus_compute_client,
+        metadata_func_id,
+        logger,
+    )
+
+    account_list = metadata.get("accounts", []) if metadata else []
+    partition_list = (
+        configured_partitions
+        if configured_partitions
+        else metadata.get("partitions", [])
+    )
+
+    if metadata:
+        if metadata.get("accounts_error"):
+            logger.warning(
+                f"Accounts retrieval reported error for {endpoint_uuid}: "
+                f"{metadata['accounts_error']}"
+            )
+        if not configured_partitions and metadata.get("partition_error"):
+            logger.warning(
+                f"Partition retrieval reported error for {endpoint_uuid}: "
+                f"{metadata['partition_error']}"
+            )
+
+    if account_list:
+        database.save_accounts(
+            identity_id=identity_id,
+            endpoint_uuid=endpoint_uuid,
+            accounts=account_list,
         )
+    else:
+        logger.warning(f"No accounts retrieved for endpoint {endpoint_uuid}")
 
-        # Process results as they complete
-        partition_list = None
-        account_list = None
-
-        for future in concurrent.futures.as_completed(
-            [partition_future, account_future]
-        ):
-            try:
-                endpoint_uuid, result = future.result()
-                if future == account_future:
-                    account_list = result
-                    database.save_accounts(
-                        identity_id=identity_id,
-                        endpoint_uuid=endpoint_uuid,
-                        accounts=account_list,
-                    )
-                elif future == partition_future:
-                    partition_list = result
-                    database.save_partition(
-                        identity_id=identity_id,
-                        endpoint_uuid=endpoint_uuid,
-                        partitions=partition_list,
-                    )
-                else:
-                    logger.error(f"Unknown future: {future}")
-            except Exception as e:
-                logger.error(
-                    f"Error processing endpoint data with endpoint_uuid: {endpoint_uuid}: {e}"
-                )
-                raise
+    if partition_list:
+        logger.info(f"Using partitions for endpoint {endpoint_uuid}: {partition_list}")
+        database.save_partition(
+            identity_id=identity_id,
+            endpoint_uuid=endpoint_uuid,
+            partitions=partition_list,
+        )
+    else:
+        logger.warning(f"No partitions available for endpoint {endpoint_uuid}")
 
     return account_list, partition_list
