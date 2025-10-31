@@ -9,6 +9,7 @@ import globus_sdk
 from flask import jsonify, redirect, request
 from globus_compute_sdk import ShellFunction
 from globus_compute_sdk.errors import TaskPending
+from globus_sdk.services.compute.errors import ComputeAPIError
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import DiamondResponseError, RequestMalformed
@@ -769,10 +770,17 @@ def diamond_endpoint_submit_job():
     )
     submit_task_shell = ShellFunction(submit_task_script)
     function_id = globus_compute_client.register_function(submit_task_shell)
-    task_id = globus_compute_client.run(
-        endpoint_id=endpoint_id,
-        function_id=function_id,
-    )
+    try:
+        task_id = globus_compute_client.run(
+            endpoint_id=endpoint_id,
+            function_id=function_id,
+        )
+    except ComputeAPIError as e:
+        logger.exception("Failed to submit task to Globus Compute")
+        return jsonify(
+            {"status": e.http_status, "messages": e.messages, "error": str(e)}
+        ), e.http_status
+
     # Wait for submit task to complete with timeout to prevent hanging indefinitely
     max_attempts = 5
     submit_result = None
