@@ -1,6 +1,6 @@
 # from flask import Flask, g, jsonify
 # Assuming your Flask app is defined in app.py
-
+import random
 
 import pytest
 
@@ -60,3 +60,35 @@ def test_update_endpoint_managed_status_missing_json_field(
     assert response.status_code == 400
     assert response.json["code"] == "REQUEST_MALFORMED"
     assert "Missing JSON field 'is_managed'" in response.json["reason"]
+
+
+def test_user_init_on_endpoint_managed_status_set(
+    test_db, client, test_endpoint_frontera, test_endpoint_anvil
+):
+    endpoint_uuid = test_endpoint_anvil[2]
+
+    assert test_db
+    test_id = f"TEST_IDENTITY_{random.randint(1, 100)}"
+    test_db.save_profile(test_id, "Joe", "joe@tester.org")
+
+    identity = test_db.load_profile(test_id)
+    assert identity.identity_id == test_id
+    assert not identity.is_initialized, "Joe should not be initialized"
+    # Test EP frontera is not initialized
+    test_db.save_endpoint(test_id, *(test_endpoint_frontera))
+    endpoint_uuid = test_endpoint_frontera[2]
+
+    client.set_cookie("primary_identity", test_id)
+    client.set_cookie("tokens", "TEST_TOKENS")
+    response = client.put(
+        f"/api/manage_endpoint/{endpoint_uuid}",
+        json={"is_managed": True},
+        headers={"Content-Type": "application/json"},
+    )
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data["new_status"] is True
+
+    identity = test_db.load_profile(test_id)
+    assert identity.identity_id == test_id
+    assert identity.is_initialized, "Joe should be initialized"

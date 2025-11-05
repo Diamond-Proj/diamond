@@ -988,6 +988,8 @@ def update_endpoint_managed_status(endpoint_uuid: str):
         identity_id=identity_id, endpoint_uuid=endpoint_uuid, is_managed=is_managed
     )
 
+    g_database.set_profile_initialization_state(identity_id, initialized=True)
+
     return jsonify(
         {
             "message": f"Endpoint:{endpoint_uuid} managed status updated to {is_managed}",
