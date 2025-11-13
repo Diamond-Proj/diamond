@@ -144,6 +144,8 @@ class Database:
         environment=None,
         commands=None,
         endpoint_id=None,
+        is_public=False,
+        host=None,
     ):
         logger.info(f"Saving container: {container_task_id}, {identity_id}")
         container = Container(
@@ -158,6 +160,8 @@ class Database:
             environment=environment,
             commands=commands,
             endpoint_id=endpoint_id,
+            is_public=is_public,
+            host=host,
         )
         db.session.merge(container)
         db.session.commit()
@@ -179,6 +183,42 @@ class Database:
     def load_containers(self, identity_id):
         logger.info(f"Loading container data for identity_id: {identity_id}")
         return Container.query.filter_by(identity_id=identity_id).all()
+
+    def load_containers_by_endpoint(self, identity_id, endpoint_uuid):
+        logger.info(
+            f"Loading container data for identity_id: {identity_id} on endpoint: {endpoint_uuid}"
+        )
+        return Container.query.filter_by(
+            identity_id=identity_id, endpoint_id=endpoint_uuid
+        ).all()
+
+    def load_public_containers_by_hosts(self, hosts, exclude_identity_id=None):
+        logger.info(
+            f"Loading public containers for hosts: {hosts}, excluding identity: {exclude_identity_id}"
+        )
+        if not hosts:
+            return []
+
+        return Container.query.filter(
+            Container.is_public.is_(True),
+            Container.host.in_(hosts),
+        )
+
+    def update_container_public_status(self, container_name, identity_id, is_public):
+        logger.info(
+            f"Updating container public status: {container_name}, identity_id: {identity_id}, is_public: {is_public}"
+        )
+        container = Container.query.filter_by(
+            name=container_name, identity_id=identity_id
+        ).first()
+        if container:
+            container.is_public = is_public
+            db.session.commit()
+        return container
+
+    def get_container_by_name(self, container_name):
+        logger.info(f"Fetching container by name: {container_name}")
+        return Container.query.filter_by(name=container_name).first()
 
     def delete_container(self, container_task_id):
         logger.info(f"Deleting container: {container_task_id}")

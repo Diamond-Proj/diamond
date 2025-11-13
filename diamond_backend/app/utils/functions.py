@@ -136,29 +136,39 @@ def _escape_shell_braces(cmd: str) -> str:
     return cmd.replace("{", "{{").replace("}", "}}")
 
 
-get_machine_metadata = ShellFunction(_escape_shell_braces(_GET_MACHINE_METADATA_CMD))
+def _make_shell_function(cmd: str, **kwargs) -> ShellFunction:
+    """Create a ShellFunction compatible with older endpoints."""
+    shell_fn = ShellFunction(cmd, **kwargs)
+    if not hasattr(shell_fn, "return_dict"):
+        setattr(shell_fn, "return_dict", False)
+    return shell_fn
 
 
-get_partitions = ShellFunction('sinfo -h -o "%P"')
+get_machine_metadata = _make_shell_function(
+    _escape_shell_braces(_GET_MACHINE_METADATA_CMD)
+)
 
 
-get_accounts = ShellFunction(
+get_partitions = _make_shell_function('sinfo -h -o "%P"')
+
+
+get_accounts = _make_shell_function(
     "sacctmgr show associations --noheader -P user=$USER format=Account"
 )
 
 
-get_container_status = ShellFunction('squeue --name={name} -h -o "%T"')
+get_container_status = _make_shell_function('squeue --name={name} -h -o "%T"')
 
 
-get_task_status = ShellFunction('squeue --name={task_name} -h -o "%T"')
+get_task_status = _make_shell_function('squeue --name={task_name} -h -o "%T"')
 
 
-check_diamond_work_path = ShellFunction(
+check_diamond_work_path = _make_shell_function(
     "if [ -d {diamond_work_path} ] && [ -w {diamond_work_path} ]; then echo 1; else echo 0; fi"
 )
 
 
-create_diamond_dir = ShellFunction(
+create_diamond_dir = _make_shell_function(
     "mkdir -p {diamond_dir} && mkdir -p {diamond_log_dir} && mkdir -p {diamond_image_dir}"
 )
 

@@ -57,6 +57,11 @@ CORS(
 
 app.config.from_mapping(config)
 
+# Ensure SQLAlchemy uses pre-ping and reasonable pool recycle to avoid stale connections.
+engine_options = app.config.setdefault("SQLALCHEMY_ENGINE_OPTIONS", {})
+engine_options.setdefault("pool_pre_ping", True)
+engine_options.setdefault("pool_recycle", 300)
+
 basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 
 # print("sql url: ", app.config["SQLALCHEMY_DATABASE_URI"])

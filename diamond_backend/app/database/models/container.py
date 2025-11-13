@@ -17,6 +17,8 @@ class Container(db.Model):  # type: ignore[name-defined]
     environment = db.Column(db.Text)
     commands = db.Column(db.Text)
     endpoint_id = db.Column(db.String)
+    is_public = db.Column(db.Boolean, default=False)
+    host = db.Column(db.Text)
 
     def __init__(
         self,
@@ -31,6 +33,8 @@ class Container(db.Model):  # type: ignore[name-defined]
         environment,
         commands,
         endpoint_id,
+        is_public=False,
+        host=None,
     ):
         self.container_task_id = container_task_id
         self.container_status = container_status
@@ -43,6 +47,8 @@ class Container(db.Model):  # type: ignore[name-defined]
         self.environment = environment
         self.commands = commands
         self.endpoint_id = endpoint_id
+        self.is_public = is_public
+        self.host = host
 
     def __repr__(self):
         return f"<Container {self.name}>"
