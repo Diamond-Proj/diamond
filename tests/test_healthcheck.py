@@ -3,7 +3,7 @@ from unittest.mock import patch
 
 def test_healthcheck_healthy(client):
     """Test healthcheck endpoint returns healthy status when git info is available."""
-    with patch("diamond_backend.app.routes.get_git_info") as mock_git_info:
+    with patch("diamond_backend.app.base_routes.get_git_info") as mock_git_info:
         mock_git_info.return_value = {
             "commit_sha": "a1b2c3d4e5f6789abcdef1234567890abcdef123"
         }
@@ -21,7 +21,7 @@ def test_healthcheck_healthy(client):
 
 def test_healthcheck_unhealthy(client):
     """Test healthcheck endpoint returns unhealthy status when git info is unknown."""
-    with patch("diamond_backend.app.routes.get_git_info") as mock_git_info:
+    with patch("diamond_backend.app.base_routes.get_git_info") as mock_git_info:
         mock_git_info.return_value = {"commit_sha": "unknown"}
 
         response = client.get("/api/healthcheck")

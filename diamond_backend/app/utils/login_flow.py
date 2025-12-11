@@ -1,5 +1,6 @@
 import json
 import logging
+import os
 import urllib.parse  # Add this import for URL decoding
 
 import globus_sdk
@@ -9,8 +10,6 @@ from globus_compute_sdk.sdk.login_manager import AuthorizerLoginManager
 from globus_compute_sdk.sdk.login_manager.manager import ComputeScopeBuilder
 from globus_compute_sdk.serialize import CombinedCode
 from globus_sdk.scopes import AuthScopes
-
-from diamond_backend.app.utils.utils import load_portal_client
 
 logging.basicConfig(
     level=logging.INFO,
@@ -29,6 +28,13 @@ class AuthClientManager:
         if not cls._client:
             cls._client = load_portal_client()
         return cls._client
+
+
+def load_portal_client():
+    """Create an AuthClient for the portal"""
+    return globus_sdk.ConfidentialAppAuthClient(
+        os.environ["PORTAL_CLIENT_ID"], os.environ["PORTAL_CLIENT_SECRET"]
+    )
 
 
 def initialize_compute_login_manager() -> AuthorizerLoginManager:

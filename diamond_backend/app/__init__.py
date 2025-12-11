@@ -72,7 +72,13 @@ with app.app_context():
 
 # Import routes after app is created to avoid circular imports
 def register_routes():
-    from diamond_backend.app import routes as routes
+    from diamond_backend.app import base_routes as base_routes
+    from diamond_backend.app import containers as containers
+    from diamond_backend.app import datasets as datasets
+    from diamond_backend.app import endpoints as endpoints
+    from diamond_backend.app import images as images
+    from diamond_backend.app import tasks as tasks
+    from diamond_backend.app import transfers as transfers
 
 
 register_routes()
