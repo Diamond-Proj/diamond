@@ -4,12 +4,99 @@ import time
 from typing import Dict, List, Tuple
 
 from globus_compute_sdk import Client as GlobusComputeClient
+from globus_compute_sdk.errors import TaskPending
 from globus_sdk import ComputeAPIError
 
 from diamond_backend.app.database.data_manager import Database
 from diamond_backend.app.utils.config_loader import load_partitions
 from diamond_backend.app.utils.functions import get_machine_metadata
 from diamond_backend.app.utils.host_machine_mapping import resolve_host
+
+_METADATA_SUBMIT_MAX_ATTEMPTS = 3
+_METADATA_POLL_MAX_ATTEMPTS = 15
+_METADATA_INITIAL_DELAY = 1.0
+_METADATA_MAX_DELAY = 8.0
+_RETRYABLE_COMPUTE_ERROR_CODES = {"RESOURCE_CONFLICT"}
+
+
+def _is_retryable_compute_error(error: ComputeAPIError) -> bool:
+    """Return True if Globus Compute error is safe to retry."""
+    code = getattr(error, "code", None)
+    status = getattr(error, "http_status", None)
+    return (code and code in _RETRYABLE_COMPUTE_ERROR_CODES) or status == 409
+
+
+def _submit_metadata_task_with_retry(
+    endpoint_uuid: str,
+    globus_compute_client: GlobusComputeClient,
+    metadata_func_id: str,
+    logger: logging.Logger,
+    max_attempts: int = _METADATA_SUBMIT_MAX_ATTEMPTS,
+) -> str | None:
+    """Submit the metadata task, retrying transient Compute errors."""
+    delay = _METADATA_INITIAL_DELAY
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return globus_compute_client.run(
+                endpoint_id=endpoint_uuid,
+                function_id=metadata_func_id,
+            )
+        except ComputeAPIError as exc:
+            if not _is_retryable_compute_error(exc) or attempt == max_attempts:
+                logger.error(
+                    "Error running metadata function for endpoint %s: %s",
+                    endpoint_uuid,
+                    exc,
+                )
+                return None
+
+            logger.warning(
+                "Metadata function submission conflict for %s (attempt %s/%s). "
+                "Retrying in %.1fs.",
+                endpoint_uuid,
+                attempt,
+                max_attempts,
+                delay,
+            )
+            time.sleep(delay)
+            delay = min(delay * 2, _METADATA_MAX_DELAY)
+    return None
+
+
+def _wait_for_metadata_result(
+    globus_compute_client: GlobusComputeClient,
+    metadata_task_id: str,
+    logger: logging.Logger,
+    max_attempts: int = _METADATA_POLL_MAX_ATTEMPTS,
+) -> object | None:
+    """Poll Globus Compute for the metadata task result."""
+    delay = _METADATA_INITIAL_DELAY
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return globus_compute_client.get_result(metadata_task_id)
+        except TaskPending:
+            logger.info(
+                "Metadata task %s still pending (attempt %s/%s).",
+                metadata_task_id,
+                attempt,
+                max_attempts,
+            )
+            time.sleep(delay)
+            delay = min(delay * 1.5, _METADATA_MAX_DELAY)
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.error(
+                "Unexpected error retrieving metadata for task %s: %s",
+                metadata_task_id,
+                exc,
+            )
+            return None
+
+    logger.error(
+        "Metadata task %s pending after %s attempts; giving up.",
+        metadata_task_id,
+        max_attempts,
+    )
+    return None
 
 
 def endpoint_initialization_status(
@@ -97,26 +184,26 @@ def _get_endpoint_machine_metadata(
     logger: logging.Logger,
 ) -> Dict:
     """Get machine metadata for an endpoint"""
-    try:
-        metadata_task_id = globus_compute_client.run(
-            endpoint_id=endpoint_uuid,
-            function_id=metadata_func_id,
-        )
-    except ComputeAPIError as e:
-        logger.error(
-            f"Error running metadata function for endpoint {endpoint_uuid}: {e}"
-        )
+    metadata_task_id = _submit_metadata_task_with_retry(
+        endpoint_uuid,
+        globus_compute_client,
+        metadata_func_id,
+        logger,
+    )
+    if not metadata_task_id:
         return {}
 
-    metadata_task_status = globus_compute_client.get_task(metadata_task_id)
-    for _ in range(10):
-        if metadata_task_status["pending"]:
-            time.sleep(2)
-            metadata_task_status = globus_compute_client.get_task(metadata_task_id)
-        else:
-            break
-    metadata_result = globus_compute_client.get_result(metadata_task_id)
-    metadata_output = metadata_result.stdout
+    metadata_result = _wait_for_metadata_result(
+        globus_compute_client,
+        metadata_task_id,
+        logger,
+    )
+    if metadata_result is None:
+        return {}
+
+    metadata_output = getattr(metadata_result, "stdout", None)
+    if not metadata_output and metadata_result not in (None, ""):
+        metadata_output = str(metadata_result)
 
     if not metadata_output:
         logger.error(f"No metadata output returned for endpoint {endpoint_uuid}")
