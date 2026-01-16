@@ -10,6 +10,9 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 #SBATCH --account={{ account }}
 #SBATCH --ntasks-per-node=1
 #SBATCH --exclusive
+{%- if slurm_options %}
+{{ slurm_options }}
+{%- endif %}
 
 export DIAMOND_DATASET_PATH={{ dataset_system_path }}
 if [[ -z "{{ dataset_system_path }}" ]]; then

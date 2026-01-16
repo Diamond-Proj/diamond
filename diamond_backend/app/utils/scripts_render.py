@@ -65,6 +65,7 @@ def render_submit_task_script(
     container,
     dataset_system_path,
     task_command,
+    slurm_options,
 ):
     submit_task_template = env.get_template("submit_task.j2")
     submit_task_script = submit_task_template.render(
@@ -81,5 +82,6 @@ def render_submit_task_script(
         container=container,
         dataset_system_path=dataset_system_path,
         task_command=task_command,
+        slurm_options=slurm_options,
     )
     return submit_task_script

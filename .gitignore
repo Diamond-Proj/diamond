@@ -35,3 +35,10 @@ next-env.d.ts
 
 # Pycharm
 .idea
+
+# egg info
+*.egg-info/
+
+# coverage
+.coverage*
+coverage.xml

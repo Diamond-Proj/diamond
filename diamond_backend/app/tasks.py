@@ -5,7 +5,6 @@ import time
 from datetime import datetime
 
 from flask import jsonify, request
-from globus_compute_sdk import ShellFunction
 from globus_compute_sdk.errors import TaskPending
 from globus_sdk.services.compute.errors import ComputeAPIError
 
@@ -15,6 +14,7 @@ from diamond_backend.app.utils.config_loader import (
 )
 from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
+    _make_shell_function,
     get_task_log,
     get_task_status,
 )
@@ -38,6 +38,7 @@ def diamond_endpoint_submit_job():
     task_command = request.json.get("task", "")
     num_of_nodes = request.json.get("num_of_nodes", "1")  # 1 node is a safe default
     time_duration = request.json.get("time_duration")
+    slurm_options = request.json.get("slurm_options", "")
     # max_retries = request.json.get("max_retries", 3)  # Default to 3 retries
     identity_id = request.cookies.get("primary_identity")
     dataset_id = request.json.get("dataset_id")
@@ -78,8 +79,9 @@ def diamond_endpoint_submit_job():
         container=container_path,
         dataset_system_path=dataset_system_path,
         task_command=task_command,
+        slurm_options=slurm_options,
     )
-    submit_task_shell = ShellFunction(submit_task_script)
+    submit_task_shell = _make_shell_function(submit_task_script)
     function_id = globus_compute_client.register_function(submit_task_shell)
     try:
         task_id = globus_compute_client.run(
@@ -101,12 +103,13 @@ def diamond_endpoint_submit_job():
         except TaskPending:
             time.sleep(2)
             continue
-        except Exception:
+        except Exception as e:
             logger.exception("Failed to fetch results for task_id: %s", task_id)
             return jsonify(
                 {
                     "error": "Failed to submit job - could not fetch results from endpoint",
                     "task_id": task_id,
+                    "details": str(e),
                 }
             ), 500
         else:
@@ -122,14 +125,48 @@ def diamond_endpoint_submit_job():
 
     logger.debug(f"SUBMIT RESULT: {submit_result}")
 
-    # Parse SLURM job ID from output - currently only supporting SLURM-based systems
-    match = re.search(r"Submitted batch job (\d+)", submit_result.stdout)
-    if not match:
-        logger.error(f"Could not parse job ID from stdout: {submit_result.stdout}")
+    submit_stdout = getattr(submit_result, "stdout", "")
+    submit_stderr = getattr(submit_result, "stderr", "")
+    submit_returncode = getattr(submit_result, "returncode", None)
+
+    if submit_returncode not in (None, 0):
+        error_message = "Failed to submit job - sbatch returned a non-zero exit code"
+        if submit_stderr:
+            error_message = f"{error_message}: {submit_stderr}"
+        logger.error(
+            "Submit task failed with return code %s. stdout=%s stderr=%s",
+            submit_returncode,
+            submit_stdout,
+            submit_stderr,
+        )
         return jsonify(
             {
-                "error": "Failed to submit job - could not parse job ID from SLURM output",
-                "stdout": submit_result.stdout,
+                "error": error_message,
+                "stdout": submit_stdout,
+                "stderr": submit_stderr,
+                "returncode": submit_returncode,
+            }
+        ), 500
+
+    # Parse SLURM job ID from output - currently only supporting SLURM-based systems
+    match = re.search(r"Submitted batch job (\d+)", submit_stdout)
+    if not match:
+        error_message = (
+            "Failed to submit job - could not parse job ID from SLURM output"
+        )
+        if submit_stderr:
+            error_message = f"{error_message}: {submit_stderr}"
+        logger.error(
+            "Could not parse job ID from stdout: %s stderr: %s",
+            submit_stdout,
+            submit_stderr,
+        )
+        return jsonify(
+            {
+                "error": error_message,
+                "stdout": submit_stdout,
+                "stderr": submit_stderr,
+                "returncode": submit_returncode,
             }
         ), 500
 

@@ -45,6 +45,7 @@ def test_render():
         container_module_command="",
         dataset_system_path="",
         task_command="python test.py",
+        slurm_options="",
     )
     assert script.replace(" ", "") == expected_output_1.replace(" ", "")
 
@@ -96,6 +97,7 @@ def test_render_with_dataset():
         container_module_command=container_module_command,
         dataset_system_path=dataset_system_path,
         task_command="python test.py",
+        slurm_options="",
     )
     assert container_module_command in script
     assert dataset_system_path in script

@@ -3,7 +3,6 @@ import os
 import time
 
 from flask import jsonify, request
-from globus_compute_sdk import ShellFunction
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.utils.config_loader import (
@@ -11,6 +10,7 @@ from diamond_backend.app.utils.config_loader import (
 )
 from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
+    _make_shell_function,
     log_reader_wrapper,
 )
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
@@ -66,7 +66,7 @@ def diamond_endpoint_image_builder():
         commands=commands,
         environment=environment,
     )
-    create_apptainer_def_shell = ShellFunction(create_apptainer_def_script)
+    create_apptainer_def_shell = _make_shell_function(create_apptainer_def_script)
     def_file_creation_function_id = globus_compute_client.register_function(
         create_apptainer_def_shell
     )
@@ -101,7 +101,7 @@ def diamond_endpoint_image_builder():
         reservation=reservation,
         container_module_command=container_module_command,
     )
-    container_builder_shell = ShellFunction(build_container_script)
+    container_builder_shell = _make_shell_function(build_container_script)
 
     function_id = globus_compute_client.register_function(container_builder_shell)
     container_task_id = globus_compute_client.run(
