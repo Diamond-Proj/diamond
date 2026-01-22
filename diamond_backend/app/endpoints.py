@@ -125,7 +125,7 @@ def get_endpoint_management_overview():
 
     identity_id = request.cookies.get("primary_identity")
     globus_compute_client = initialize_globus_compute_client()
-    logger.info(f"Endpoint management overview for f{identity_id} requested")
+    logger.info(f"Endpoint management overview for {identity_id} requested")
     return endpoint_initialization_status(
         globus_compute_client, identity_id, g_database
     )
@@ -220,7 +220,7 @@ def update_endpoint_managed_status(endpoint_uuid: str):
     except KeyError:
         raise RequestMalformed("Missing JSON field 'is_managed'")
 
-    logger.info(f"Endpoint management update for f{endpoint_uuid} requested")
+    logger.info(f"Endpoint management update for {endpoint_uuid} requested")
 
     g_database.update_endpoint_managed_status(
         identity_id=identity_id, endpoint_uuid=endpoint_uuid, is_managed=is_managed
