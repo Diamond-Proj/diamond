@@ -22,8 +22,8 @@ def test_python_not_found(mock_getuser, mock_env_copy, mock_which, mock_run):
     """Test behavior when no Python interpreter is found."""
     mock_env_copy.return_value = {}
     mock_getuser.return_value = "testuser"
-    mock_which.side_effect = (
-        lambda cmd: None if cmd in ["python3", "python"] else "/usr/bin/sinfo"
+    mock_which.side_effect = lambda cmd: (
+        None if cmd in ["python3", "python"] else "/usr/bin/sinfo"
     )
     mock_run.side_effect = [
         MagicMock(returncode=1, stdout="", stderr="command not found"),
@@ -91,8 +91,8 @@ def test_lsf_system_detection(
     mock_getuser.return_value = "testuser"
     mock_expanduser.return_value = "/home/testuser"
 
-    mock_which.side_effect = (
-        lambda cmd: "/usr/bin/bqueues" if cmd == "bqueues" else None
+    mock_which.side_effect = lambda cmd: (
+        "/usr/bin/bqueues" if cmd == "bqueues" else None
     )
 
     assert 'elif shutil.which("bqueues"):' in _GET_MACHINE_METADATA_CMD
@@ -182,8 +182,8 @@ def test_sacctmgr_fallback_commands(
     mock_env_copy.return_value = {"USER": "testuser"}
     mock_getuser.return_value = "testuser"
     mock_expanduser.return_value = "/home/testuser"
-    mock_which.side_effect = (
-        lambda cmd: "/usr/bin/sacctmgr" if cmd == "sacctmgr" else None
+    mock_which.side_effect = lambda cmd: (
+        "/usr/bin/sacctmgr" if cmd == "sacctmgr" else None
     )
     assert (
         "sacctmgr show associations --noheader -P user=$USER format=Account"
