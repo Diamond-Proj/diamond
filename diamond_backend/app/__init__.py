@@ -8,7 +8,6 @@ from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from diamond_backend.app.database.data_manager import Database
-from diamond_backend.app.runtime_redis import RuntimeRedis
 
 # Load environment variables first, before any other imports or app creation
 load_dotenv()
@@ -70,12 +69,11 @@ basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 with app.app_context():
     g_database = Database(app)
 
-g_runtime_redis = RuntimeRedis()
-
 
 # Import routes after app is created to avoid circular imports
 def register_routes():
     from diamond_backend.app import base_routes as base_routes
+    from diamond_backend.app import containers as containers
     from diamond_backend.app import datasets as datasets
     from diamond_backend.app import endpoints as endpoints
     from diamond_backend.app import images as images

@@ -112,10 +112,6 @@ class Database:
         db.session.merge(task)
         db.session.commit()
 
-    def get_task_status(self, task_id):
-        logger.info(f"Getting task status: {task_id}")
-        return Task.query.filter_by(task_id=task_id).first().task_status
-
     def update_task_status(self, task_id, task_status):
         logger.info(f"Updating task status: {task_id}, {task_status}")
         task = Task.query.filter_by(task_id=task_id).first()

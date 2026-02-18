@@ -6,8 +6,9 @@ from datetime import datetime
 
 from flask import jsonify, request
 from globus_compute_sdk.errors import TaskPending
+from globus_sdk.services.compute.errors import ComputeAPIError
 
-from diamond_backend.app import app, g_database, g_runtime_redis
+from diamond_backend.app import app, g_database
 from diamond_backend.app.utils.config_loader import (
     load_container_module_command,
 )
@@ -23,8 +24,6 @@ from diamond_backend.app.utils.scripts_render import (
 )
 
 logger = logging.getLogger(__name__)
-GET_TASK_STATUS_DTASK_TYPE = "get_task_status"
-GET_TASK_STATUS_REDIS_TTL_SECONDS = 30
 
 
 @app.route("/api/submit_task", methods=["POST"])
@@ -40,6 +39,7 @@ def diamond_endpoint_submit_job():
     num_of_nodes = request.json.get("num_of_nodes", "1")  # 1 node is a safe default
     time_duration = request.json.get("time_duration")
     slurm_options = request.json.get("slurm_options", "")
+    # max_retries = request.json.get("max_retries", 3)  # Default to 3 retries
     identity_id = request.cookies.get("primary_identity")
     dataset_id = request.json.get("dataset_id")
 
@@ -88,12 +88,11 @@ def diamond_endpoint_submit_job():
             endpoint_id=endpoint_id,
             function_id=function_id,
         )
-    except Exception as e:
+    except ComputeAPIError as e:
         logger.exception("Failed to submit task to Globus Compute")
         return jsonify(
             {"status": e.http_status, "messages": e.messages, "error": str(e)}
         ), e.http_status
-
     # Wait for submit task to complete with timeout to prevent hanging indefinitely
     max_attempts = 5
     submit_result = None
@@ -102,7 +101,7 @@ def diamond_endpoint_submit_job():
             submit_result = globus_compute_client.get_result(task_id)
             logger.info(f"Submit result: {globus_compute_client.get_task(task_id)}")
         except TaskPending:
-            time.sleep(3)
+            time.sleep(2)
             continue
         except Exception as e:
             logger.exception("Failed to fetch results for task_id: %s", task_id)
@@ -179,7 +178,7 @@ def diamond_endpoint_submit_job():
         batch_job_id=slurm_job_id,
         task_name=task_name,
         identity_id=identity_id,
-        task_status="PENDING",
+        task_status="submitted",
         task_create_time=datetime.now(),
         stdout_path=stdout_path,
         stderr_path=stderr_path,
@@ -201,97 +200,39 @@ def diamond_endpoint_submit_job():
 def diamond_get_task_status():
     identity_id = request.cookies.get("primary_identity")
     globus_compute_client = initialize_globus_compute_client()
-    redis_key = f"dtask:{identity_id}:{GET_TASK_STATUS_DTASK_TYPE}"
-    runtime_record = g_runtime_redis.get(redis_key)
 
-    if runtime_record is None:
-        tasks = g_database.load_tasks(identity_id=identity_id)
+    tasks = g_database.load_tasks(identity_id=identity_id)
+
+    for task in tasks:
+        task_id = task.task_id
+        try:
+            current_task = globus_compute_client.get_task(task_id)
+        except Exception as e:
+            logger.warning(f"Task {task_id} not found. Error: {e}")
+            continue
+
+        task.endpoint_id = current_task["details"]["endpoint_id"]
         task_status_func_id = globus_compute_client.register_function(get_task_status)
-        task_records = []
-
-        for task in tasks:
-            try:
-                task_status_task_id = globus_compute_client.run(
-                    endpoint_id=task.compute_endpoint_id,
-                    function_id=task_status_func_id,
-                    task_name=task.task_name,
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to submit get_task_status for task %s. Error: %s",
-                    task.task_id,
-                    e,
-                )
-                continue
-
-            task_records.append(
-                {
-                    "identity_id": identity_id,
-                    "dtask_type": GET_TASK_STATUS_DTASK_TYPE,
-                    "task_id": task.task_id,
-                    "task_status_task_id": task_status_task_id,
-                }
+        task_status_task_id = globus_compute_client.run(
+            endpoint_id=task.endpoint_id,
+            function_id=task_status_func_id,
+            task_name=task.task_name,
+        )
+        task_status_task_status = globus_compute_client.get_task(task_status_task_id)
+        while task_status_task_status["pending"]:
+            time.sleep(2)
+            task_status_task_status = globus_compute_client.get_task(
+                task_status_task_id
             )
-
-        if task_records:
-            g_runtime_redis.set(
-                redis_key,
-                task_records,
-                ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
-            )
-    else:
-        pending_task_records = []
-        for task_record in runtime_record:
-            task_status_task_id = task_record["task_status_task_id"]
-            task_status_task = None
-            try:
-                task_status_task = globus_compute_client.get_task(task_status_task_id)
-            except Exception as e:
-                logger.warning(
-                    "Failed to load task status task %s. Error: %s",
-                    task_status_task_id,
-                    e,
-                )
-                continue
-
-            if task_status_task.get("pending", False):
-                pending_task_records.append(task_record)
-                continue
-
-            try:
-                task_status_result = globus_compute_client.get_result(
-                    task_status_task_id
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to fetch result for task status task %s. Error: %s",
-                    task_status_task_id,
-                    e,
-                )
-                continue
-
-            task_status = getattr(task_status_result, "stdout", "").rstrip("\n")
-            if task_status:
-                if task_status == "COMPLETING":
-                    task_status = "COMPLETED"
-                g_database.update_task_status(task_record["task_id"], task_status)
-                logger.info(task_status)
-            else:
-                previous_task_status = g_database.get_task_status(
-                    task_record["task_id"]
-                )
-                if previous_task_status in ["RUNNING", "COMPLETING"]:
-                    g_database.update_task_status(task_record["task_id"], "COMPLETED")
-                    logger.info(f"Task {task_record['task_id']} completed")
-
-        if pending_task_records:
-            g_runtime_redis.set(
-                redis_key,
-                pending_task_records,
-                ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
-            )
+            continue
+        task_status = globus_compute_client.get_result(task_status_task_id).stdout
+        if task_status == "":
+            task.task_status = task.task_status
         else:
-            g_runtime_redis.delete(redis_key)
+            task.task_status = task_status
+        logger.info(task_status)
+
+        g_database.update_task_status(task.task_id, task.task_status)
 
     # Reload the updated tasks from the database
     updated_tasks = g_database.load_tasks(identity_id=identity_id)
@@ -304,7 +245,9 @@ def diamond_get_task_status():
             "task_name": task.task_name,
             "status": task.task_status,
             "details": {
-                "endpoint_id": task.compute_endpoint_id or "N/A",
+                "endpoint_id": (
+                    task.endpoint_id if hasattr(task, "endpoint_id") else "N/A"
+                ),
                 "task_create_time": task.task_create_time,
             },
             "result": task.stdout_path,
