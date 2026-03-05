@@ -1,10 +1,22 @@
 import importlib.resources as resources
+import re
 from importlib.resources import as_file
+from typing import Any
 
-from jinja2 import Environment, FileSystemLoader
+from jinja2 import Environment, FileSystemLoader, StrictUndefined
 
 with as_file(resources.files("diamond_backend").joinpath("app/data/template")) as fpath:
     env = Environment(loader=FileSystemLoader(fpath))
+
+with as_file(
+    resources.files("diamond_backend").joinpath("app/data/task_templates")
+) as task_templates_fpath:
+    task_templates_env = Environment(
+        loader=FileSystemLoader(task_templates_fpath),
+        undefined=StrictUndefined,
+    )
+
+TASK_TEMPLATE_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 
 
 def render_apptainer_build_script(
@@ -85,3 +97,11 @@ def render_submit_task_script(
         slurm_options=slurm_options,
     )
     return submit_task_script
+
+
+def render_task_template_script(template_name: str, context: dict[str, Any]):
+    if not template_name or not TASK_TEMPLATE_NAME_PATTERN.fullmatch(template_name):
+        raise ValueError("Invalid task template name")
+
+    task_template = task_templates_env.get_template(template_name)
+    return task_template.render(**context)

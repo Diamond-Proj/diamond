@@ -9,7 +9,7 @@ cat << EOF > {{ location }}/{{ container_name }}.submit
 #SBATCH --account={{ account }}
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
-#SBATCH --exclusive
+#SBATCH --mem=40G
 
 {{ container_module_command }}
 apptainer build {{ location }}/{{ container_name }}.sif {{ location }}/{{ container_name }}.def

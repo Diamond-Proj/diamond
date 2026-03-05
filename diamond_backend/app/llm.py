@@ -11,6 +11,7 @@ from globus_compute_sdk.errors import TaskPending
 from globus_sdk.services.compute.errors import ComputeAPIError
 
 from diamond_backend.app import app, g_database
+from diamond_backend.app.utils.data_prep import globus_compute_wrapped_run
 from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
     _escape_shell_braces,
@@ -43,7 +44,9 @@ def _resolve_path_for_endpoint(path_value, location):
     return os.path.join(location, path_value)
 
 
-def _write_file_on_endpoint(endpoint_id, file_path, content):
+def _write_file_on_endpoint(
+    endpoint_id, file_path, content, user_endpoint_config: dict[str, str] | None
+):
     """Write a file on the selected endpoint via Globus Compute."""
     if not endpoint_id:
         raise ValueError("endpoint is required")
@@ -56,11 +59,17 @@ def _write_file_on_endpoint(endpoint_id, file_path, content):
 
     globus_compute_client = initialize_globus_compute_client()
     write_file_function_id = globus_compute_client.register_function(write_file)
-    write_file_task_id = globus_compute_client.run(
+    write_file_task_id = globus_compute_wrapped_run(
+        globus_compute_client,
         endpoint_id=endpoint_id,
         function_id=write_file_function_id,
-        file_path_b64=base64.b64encode(file_path.encode("utf-8")).decode("ascii"),
-        content_b64=base64.b64encode(content.encode("utf-8")).decode("ascii"),
+        user_endpoint_config=user_endpoint_config,
+        kwargs={
+            "file_path_b64": base64.b64encode(file_path.encode("utf-8")).decode(
+                "ascii"
+            ),
+            "content_b64": base64.b64encode(content.encode("utf-8")).decode("ascii"),
+        },
     )
 
     write_result = None
@@ -619,10 +628,17 @@ def diamond_launch_llmflux():
     if not diamond_dir:
         return jsonify({"error": "Diamond directory not found"}), 400
 
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id,
+        endpoint_uuid=endpoint_id,
+    )
+
     try:
         if input_content:
             resolved_input_path = _resolve_path_for_endpoint(input_path, diamond_dir)
-            _write_file_on_endpoint(endpoint_id, resolved_input_path, input_content)
+            _write_file_on_endpoint(
+                endpoint_id, resolved_input_path, input_content, user_endpoint_config
+            )
         submission = launch_llmflux(
             endpoint_id=endpoint_id,
             identity_id=identity_id,
@@ -675,10 +691,16 @@ def diamond_launch_llmflux():
 def diamond_write_file():
     payload = request.get_json(silent=True) or {}
     endpoint_id = payload.get("endpoint") or payload.get("endpoint_uuid")
+    identity_id = request.cookies.get("primary_identity")
+
     file_path = payload.get("file_path")
     content = payload.get("content")
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id,
+        endpoint_uuid=endpoint_id,
+    )
     try:
-        _write_file_on_endpoint(endpoint_id, file_path, content)
+        _write_file_on_endpoint(endpoint_id, file_path, content, user_endpoint_config)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
     except RuntimeError as e:

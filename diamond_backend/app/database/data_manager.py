@@ -95,7 +95,7 @@ class Database:
         compute_endpoint_id=None,
         checkpoint_path=None,
     ):
-        logger.info(f"Saving task: {task_id}, {identity_id}")
+        logger.debug("Saving task:{} from user:{}".format(task_id, identity_id))
         task = Task(
             task_id=task_id,
             batch_job_id=batch_job_id,
@@ -126,9 +126,13 @@ class Database:
             # logger.error(f"Task {task_id} not found")
             raise TaskNotFoundError(task_id=task_id)
 
-    def load_tasks(self, identity_id):
+    def load_tasks(self, identity_id) -> list[Task]:
         logger.info(f"Loading task data for identity_id: {identity_id}")
-        return Task.query.filter_by(identity_id=identity_id).all()
+        return (
+            Task.query.filter_by(identity_id=identity_id)
+            .order_by(Task.task_create_time.desc())
+            .all()
+        )
 
     def delete_task(self, task_id):
         logger.info(f"Deleting task: {task_id}")
@@ -243,6 +247,7 @@ class Database:
         endpoint_uuid,
         endpoint_status,
         is_managed: bool = False,
+        user_endpoint_config: dict[str, str] | None = None,
     ):
         logger.info(
             f"Saving endpoint: {endpoint_name}, {endpoint_host}, {endpoint_uuid}"
@@ -254,6 +259,7 @@ class Database:
             endpoint_uuid=endpoint_uuid,
             endpoint_status=endpoint_status,
             is_managed=is_managed,
+            user_endpoint_config=user_endpoint_config,
         )
         db.session.merge(endpoint)
         db.session.commit()
@@ -277,6 +283,9 @@ class Database:
     def get_endpoints(self, identity_id):
         return Endpoints.query.filter_by(identity_id=identity_id).all()
 
+    def get_managed_endpoints(self, identity_id):
+        return Endpoints.query.filter_by(identity_id=identity_id, is_managed=True).all()
+
     def delete_endpoints(self, identity_id):
         Endpoints.query.filter_by(identity_id=identity_id).delete()
         db.session.commit()
@@ -285,6 +294,35 @@ class Database:
         endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
         if endpoint:
             return endpoint.endpoint_host
+        else:
+            logger.error(f"Endpoint {endpoint_uuid} not found")
+            return None
+
+    def get_endpoint_user_config(
+        self, *, identity_id, endpoint_uuid
+    ) -> dict[str, str] | None:
+        endpoint = Endpoints.query.filter_by(
+            identity_id=identity_id, endpoint_uuid=endpoint_uuid
+        ).first()
+        if endpoint:
+            return endpoint.user_endpoint_config
+        else:
+            logger.error(f"Endpoint {endpoint_uuid} not found")
+            return None
+
+    def update_endpoint_user_config(
+        self,
+        *,
+        identity_id,
+        endpoint_uuid,
+        user_endpoint_config: dict[str, str] | None = None,
+    ):
+        endpoint = Endpoints.query.filter_by(
+            identity_id=identity_id, endpoint_uuid=endpoint_uuid
+        ).first()
+        if endpoint:
+            endpoint.user_endpoint_config = user_endpoint_config
+            db.session.commit()
         else:
             logger.error(f"Endpoint {endpoint_uuid} not found")
             return None

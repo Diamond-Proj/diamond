@@ -56,7 +56,10 @@ def test_wait_for_metadata_result_times_out(monkeypatch):
 
 def test_submit_metadata_task_retries_on_conflict(monkeypatch):
     client = MagicMock()
-    client.run.side_effect = [FakeComputeAPIError(), "TASK_ID"]
+    client.batch_run.side_effect = [
+        FakeComputeAPIError(),
+        {"tasks": {"FUNC_ID": ["TASK_ID"]}},
+    ]
     monkeypatch.setattr(data_prep.time, "sleep", lambda *_: None)
 
     task_id = data_prep._submit_metadata_task_with_retry(
@@ -65,6 +68,7 @@ def test_submit_metadata_task_retries_on_conflict(monkeypatch):
         "FUNC_ID",
         logging.getLogger("test"),
         max_attempts=2,
+        user_endpoint_config=None,
     )
 
     assert task_id == "TASK_ID"
@@ -72,7 +76,7 @@ def test_submit_metadata_task_retries_on_conflict(monkeypatch):
 
 def test_submit_metadata_task_returns_none_on_non_retryable(monkeypatch):
     client = MagicMock()
-    client.run.side_effect = [
+    client.batch_run.side_effect = [
         FakeComputeAPIError(code="SEMANTICALLY_INVALID", http_status=422)
     ]
     monkeypatch.setattr(data_prep.time, "sleep", lambda *_: None)

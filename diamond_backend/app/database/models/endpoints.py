@@ -11,6 +11,7 @@ class Endpoints(db.Model):  # type: ignore[name-defined]
     accounts = db.Column(db.JSON, nullable=True)
     diamond_dir = db.Column(db.String(255), nullable=True)
     is_managed = db.Column(db.Boolean, default=False)
+    user_endpoint_config = db.Column(db.JSON, nullable=True)
 
     def __init__(
         self,
@@ -23,6 +24,7 @@ class Endpoints(db.Model):  # type: ignore[name-defined]
         accounts=None,
         diamond_dir=None,
         is_managed=False,
+        user_endpoint_config=None,
     ):
         self.identity_id = identity_id
         self.endpoint_name = endpoint_name
@@ -33,6 +35,7 @@ class Endpoints(db.Model):  # type: ignore[name-defined]
         self.accounts = accounts or []
         self.diamond_dir = diamond_dir or ""
         self.is_managed = is_managed
+        self.user_endpoint_config = user_endpoint_config
 
     def __repr__(self):
         return f"<Endpoints {self.endpoint_name}>"

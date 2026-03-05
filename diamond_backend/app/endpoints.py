@@ -9,6 +9,7 @@ from diamond_backend.app.errors import RequestMalformed
 from diamond_backend.app.utils.config_loader import load_partitions
 from diamond_backend.app.utils.data_prep import (
     endpoint_initialization_status,
+    globus_compute_wrapped_run,
     load_accounts_partitions,
     register_all_endpoints,
 )
@@ -75,10 +76,15 @@ def diamond_set_diamond_work_path():
     check_diamond_work_path_func_id = globus_compute_client.register_function(
         check_diamond_work_path
     )
-    check_diamond_work_path_task_id = globus_compute_client.run(
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id, endpoint_uuid=endpoint_uuid
+    )
+    check_diamond_work_path_task_id = globus_compute_wrapped_run(
+        globus_compute_client,
         endpoint_id=endpoint_uuid,
         function_id=check_diamond_work_path_func_id,
-        diamond_work_path=diamond_work_path,
+        user_endpoint_config=user_endpoint_config,
+        kwargs={"diamond_work_path": diamond_work_path},
     )
     check_diamond_work_path_task_status = globus_compute_client.get_task(
         check_diamond_work_path_task_id
@@ -99,12 +105,16 @@ def diamond_set_diamond_work_path():
     create_diamond_dir_func_id = globus_compute_client.register_function(
         create_diamond_dir
     )
-    globus_compute_client.run(
+    globus_compute_wrapped_run(
+        globus_compute_client,
         endpoint_id=endpoint_uuid,
         function_id=create_diamond_dir_func_id,
-        diamond_dir=diamond_dir,
-        diamond_log_dir=diamond_log_dir,
-        diamond_image_dir=diamond_image_dir,
+        user_endpoint_config=user_endpoint_config,
+        kwargs={
+            "diamond_dir": diamond_dir,
+            "diamond_log_dir": diamond_log_dir,
+            "diamond_image_dir": diamond_image_dir,
+        },
     )
 
     g_database.save_diamond_dir(
@@ -155,14 +165,14 @@ def diamond_list_all_endpoints():
     return sorted_active_first_endpoints
 
 
-@app.route("/api/list_active_endpoints", methods=["GET"])
+@app.route("/api/list_active_managed_endpoints", methods=["GET"])
 @authenticated
-def diamond_list_active_endpoints():
+def diamond_list_active_managed_endpoints():
     identity_id = request.cookies.get("primary_identity")
-    active_endpoints = []
-    for endpoint in g_database.get_endpoints(identity_id=identity_id):
+    active_managed_endpoints = []
+    for endpoint in g_database.get_managed_endpoints(identity_id=identity_id):
         if endpoint.endpoint_status == "online":
-            active_endpoints.append(
+            active_managed_endpoints.append(
                 {
                     "endpoint_name": endpoint.endpoint_name,
                     "endpoint_uuid": endpoint.endpoint_uuid,
@@ -174,7 +184,7 @@ def diamond_list_active_endpoints():
             )
         else:
             continue
-    return active_endpoints
+    return active_managed_endpoints
 
 
 @app.route("/api/get_diamond_dir", methods=["GET"])
@@ -232,5 +242,37 @@ def update_endpoint_managed_status(endpoint_uuid: str):
         {
             "message": f"Endpoint:{endpoint_uuid} managed status updated to {is_managed}",
             "new_status": is_managed,
+        }
+    )
+
+
+@app.route("/api/user_endpoint_config/<endpoint_uuid>", methods=["GET"])
+@authenticated
+def get_endpoint_config(endpoint_uuid: str):
+    """Returns user_endpoint_config for the endpoint"""
+    identity_id = request.cookies.get("primary_identity")
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id,
+        endpoint_uuid=endpoint_uuid,
+    )
+    return jsonify(
+        {"endpoint_uuid": endpoint_uuid, "user_endpoint_config": user_endpoint_config}
+    )
+
+
+@app.route("/api/user_endpoint_config/<endpoint_uuid>", methods=["PUT"])
+@authenticated
+def update_endpoint_config(endpoint_uuid: str):
+    identity_id = request.cookies.get("primary_identity")
+    user_endpoint_config = request.json.get("user_endpoint_config")
+    g_database.update_endpoint_user_config(
+        identity_id=identity_id,
+        endpoint_uuid=endpoint_uuid,
+        user_endpoint_config=user_endpoint_config,
+    )
+    return jsonify(
+        {
+            "message": f"Endpoint:{endpoint_uuid} user config update",
+            "user_endpoint_config": user_endpoint_config,
         }
     )

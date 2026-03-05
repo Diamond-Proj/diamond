@@ -8,6 +8,7 @@ from diamond_backend.app import app, g_database
 from diamond_backend.app.utils.config_loader import (
     load_container_module_command,
 )
+from diamond_backend.app.utils.data_prep import globus_compute_wrapped_run
 from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
     _make_shell_function,
@@ -70,9 +71,14 @@ def diamond_endpoint_image_builder():
     def_file_creation_function_id = globus_compute_client.register_function(
         create_apptainer_def_shell
     )
-    def_file_creation_task_id = globus_compute_client.run(
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id, endpoint_uuid=endpoint_id
+    )
+    def_file_creation_task_id = globus_compute_wrapped_run(
+        globus_compute_client,
         endpoint_id=endpoint_id,
         function_id=def_file_creation_function_id,
+        user_endpoint_config=user_endpoint_config,
     )
     # Wait for the def file creation task to complete.
     def_file_creation_task_status = globus_compute_client.get_task(
@@ -104,8 +110,12 @@ def diamond_endpoint_image_builder():
     container_builder_shell = _make_shell_function(build_container_script)
 
     function_id = globus_compute_client.register_function(container_builder_shell)
-    container_task_id = globus_compute_client.run(
-        endpoint_id=endpoint_id, function_id=function_id
+
+    container_task_id = globus_compute_wrapped_run(
+        globus_compute_client,
+        endpoint_id=endpoint_id,
+        function_id=function_id,
+        user_endpoint_config=user_endpoint_config,
     )
 
     g_database.save_container(
@@ -147,6 +157,10 @@ def get_build_log():
     elif log_type == "stderr":
         log_file_path = location + "/logs" + "/" + container_name + ".stderr"
 
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id, endpoint_uuid=endpoint_id
+    )
+
     if not log_file_path:
         return jsonify({"error": "Missing required parameters"}), 400
 
@@ -162,10 +176,12 @@ def get_build_log():
 
         # Create new log reader task if no log_task_id
         if not log_task_id:
-            log_task_id = globus_compute_client.run(
+            log_task_id = globus_compute_wrapped_run(
+                globus_compute_client,
                 endpoint_id=endpoint_id,
                 function_id=get_build_log.log_reader_function_id,
-                log_file_path=log_file_path,
+                user_endpoint_config=user_endpoint_config,
+                kwargs={"log_file_path": log_file_path},
             )
             logger.info(f"Created new log reader task: {log_task_id}")
 
@@ -181,10 +197,12 @@ def get_build_log():
                 logger.info(f"Log result: {log_result}")
 
                 # Create new task using the same function ID
-                new_log_task_id = globus_compute_client.run(
+                new_log_task_id = globus_compute_wrapped_run(
+                    globus_compute_client,
                     endpoint_id=endpoint_id,
                     function_id=get_build_log.log_reader_function_id,
-                    log_file_path=log_file_path,
+                    user_endpoint_config=user_endpoint_config,
+                    kwargs={"log_file_path": log_file_path},
                 )
             except Exception as e:
                 logger.error(f"Error getting log result: {e}")

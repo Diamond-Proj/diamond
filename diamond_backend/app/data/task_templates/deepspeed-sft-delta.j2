@@ -1,0 +1,57 @@
+cat << 'EOF' > {{ location }}/{{ task_name }}.submit
+#!/bin/bash
+
+#SBATCH --job-name={{ task_name }}
+#SBATCH --output={{ stdout_path }}
+#SBATCH --error={{ stderr_path }}
+#SBATCH --nodes={{ num_of_nodes }}
+#SBATCH --time={{ time_duration }}
+#SBATCH --partition={{ partition }}
+#SBATCH --account={{ account }}
+#SBATCH --ntasks-per-node=1
+{{ slurm_options }}
+
+apptainer exec --nv \
+  --bind {{ model_path }}:/model \
+  --bind {{ dataset_path }}:/app/DeepSpeedExamples/applications/DeepSpeed-Chat/data \
+  --bind {{ finetuned_model_path }}:/scratch \
+  /work/nvme/bcrc/hxie6/deepspeed_chat.sif \
+  bash <<'DIAMOND_TASK_END'
+set -euo pipefail
+
+export CC=/usr/bin/gcc
+export CXX=/usr/bin/g++
+export PYTHONNOUSERSITE=1
+
+export TRITON_CACHE_DIR=/scratch/triton_cache
+mkdir -p "$TRITON_CACHE_DIR"
+
+export TORCH_EXTENSIONS_DIR=/scratch/torch_extensions
+mkdir -p "$TORCH_EXTENSIONS_DIR"
+
+export MASTER_ADDR=127.0.0.1
+{% raw %}
+export MASTER_PORT=$(( 50000 + ${{SLURM_JOB_ID: -4}} ))
+{% endraw %}
+echo "Using MASTER_ADDR=$MASTER_ADDR MASTER_PORT=$MASTER_PORT"
+echo "output directory: {{ finetuned_model_path }}/output"
+
+deepspeed --num_gpus 1 --master_port "$MASTER_PORT" \
+  /app/DeepSpeedExamples/applications/DeepSpeed-Chat/training/step1_supervised_finetuning/main.py \
+  --model_name_or_path /model/Qwen3-0.6B \
+  --learning_rate 3e-6 \
+  --data_path local/jsonfile \
+  --num_train_epochs 4 \
+  --gradient_accumulation_steps 8 \
+  --lora_dim 32 \
+  --zero_stage 1 \
+  --per_device_train_batch_size 1 \
+  --deepspeed \
+  --enable_tensorboard \
+  --output_dir /scratch/output \
+  --tensorboard_path /scratch/tensorboard
+DIAMOND_TASK_END
+
+EOF
+
+sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit

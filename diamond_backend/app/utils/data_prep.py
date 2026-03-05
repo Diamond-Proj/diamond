@@ -18,6 +18,22 @@ _METADATA_INITIAL_DELAY = 1.0
 _METADATA_MAX_DELAY = 8.0
 _RETRYABLE_COMPUTE_ERROR_CODES = {"RESOURCE_CONFLICT"}
 
+logger = logging.getLogger(__name__)
+
+
+DELTA_MEP_STATUS = {
+    "uuid": "44a4297d-d07d-41a8-8ce9-c89464b23330",
+    "name": "NCSA Delta Multi-User Endpoint",
+    "display_name": "NCSA Delta Multi-User Endpoint",
+    "owner": "18096de1-8571-4a48-9b30-4968b1d5a81b",
+}
+
+DELTA_USER_ENDPOINT_CONFIG = {
+    "account": "bcrc-delta-cpu",
+    "exclusive": False,
+    "partition": "cpu-interactive",
+}
+
 
 def _is_retryable_compute_error(error: ComputeAPIError) -> bool:
     """Return True if Globus Compute error is safe to retry."""
@@ -26,20 +42,49 @@ def _is_retryable_compute_error(error: ComputeAPIError) -> bool:
     return (code and code in _RETRYABLE_COMPUTE_ERROR_CODES) or status == 409
 
 
+def globus_compute_wrapped_run(
+    globus_compute_client: GlobusComputeClient,
+    endpoint_id: str,
+    function_id: str,
+    user_endpoint_config: Dict[str, str] | None = None,
+    args: tuple | None = None,
+    kwargs: dict | None = None,
+):
+    """Wrapper over Globus compute clients run function.
+
+    This method uses the create_batch method that allows passing
+    user_endpoint_config for the MEP to interface with the batch system
+    """
+    logger.info(
+        "Submitting task with user_config:{} to ep:{}".format(
+            user_endpoint_config, endpoint_id
+        )
+    )
+    batch = globus_compute_client.create_batch(
+        user_endpoint_config=user_endpoint_config
+    )
+    batch.add(function_id, args=args, kwargs=kwargs)
+    r = globus_compute_client.batch_run(endpoint_id, batch)
+    return r["tasks"][function_id][0]
+
+
 def _submit_metadata_task_with_retry(
     endpoint_uuid: str,
     globus_compute_client: GlobusComputeClient,
     metadata_func_id: str,
     logger: logging.Logger,
     max_attempts: int = _METADATA_SUBMIT_MAX_ATTEMPTS,
+    user_endpoint_config: Dict[str, str] | None = None,
 ) -> str | None:
     """Submit the metadata task, retrying transient Compute errors."""
     delay = _METADATA_INITIAL_DELAY
     for attempt in range(1, max_attempts + 1):
         try:
-            return globus_compute_client.run(
+            return globus_compute_wrapped_run(
+                globus_compute_client,
                 endpoint_id=endpoint_uuid,
                 function_id=metadata_func_id,
+                user_endpoint_config=user_endpoint_config,
             )
         except ComputeAPIError as exc:
             if not _is_retryable_compute_error(exc) or attempt == max_attempts:
@@ -107,6 +152,7 @@ def endpoint_initialization_status(
     """This method returns a list of all endpoints and their current user selection state"""
 
     all_endpoints = global_compute_client.get_endpoints(role="any")
+    all_endpoints.append(DELTA_MEP_STATUS)
     endpoints_in_db = database.get_endpoints(identity_id=identity_id)
 
     endpoint_map = {}
@@ -130,8 +176,9 @@ def register_all_endpoints(
 
     # Specify role=Any to fetch MEPs in addition to those owned by the user
     endpoints = globus_compute_client.get_endpoints(role="any")
+    # Add DELTA MEP that's not public
+    endpoints.append(DELTA_MEP_STATUS)
     all_endpoints = []
-
     for endpoint in endpoints:
         logger.info(f"Checking endpoint: {endpoint}")
         endpoint_name = endpoint["display_name"]
@@ -154,12 +201,17 @@ def register_all_endpoints(
             identity_id=identity_id, endpoint_uuid=endpoint_uuid
         ):
             logger.info(f"Saving endpoint: {endpoint_name}")
+            user_endpoint_config = None
+            # Delta MEP specific hack
+            if endpoint_uuid == "44a4297d-d07d-41a8-8ce9-c89464b23330":
+                user_endpoint_config = DELTA_USER_ENDPOINT_CONFIG
             database.save_endpoint(
                 identity_id=identity_id,
                 endpoint_name=endpoint_name,
                 endpoint_host=endpoint_host,
                 endpoint_uuid=endpoint_uuid,
                 endpoint_status=endpoint_status,
+                user_endpoint_config=user_endpoint_config,
             )
         else:
             logger.info(f"Endpoint {endpoint_name} already exists, updating status")
@@ -182,6 +234,7 @@ def _get_endpoint_machine_metadata(
     globus_compute_client: GlobusComputeClient,
     metadata_func_id: str,
     logger: logging.Logger,
+    user_endpoint_config: dict[str, str] | None,
 ) -> Dict:
     """Get machine metadata for an endpoint"""
     metadata_task_id = _submit_metadata_task_with_retry(
@@ -189,6 +242,7 @@ def _get_endpoint_machine_metadata(
         globus_compute_client,
         metadata_func_id,
         logger,
+        user_endpoint_config=user_endpoint_config,
     )
     if not metadata_task_id:
         return {}
@@ -267,12 +321,16 @@ def load_accounts_partitions(
         logger,
     )
 
+    user_endpoint_config = database.get_endpoint_user_config(
+        identity_id=identity_id, endpoint_uuid=endpoint_uuid
+    )
     metadata_func_id = globus_compute_client.register_function(get_machine_metadata)
     metadata = _get_endpoint_machine_metadata(
         endpoint_uuid,
         globus_compute_client,
         metadata_func_id,
         logger,
+        user_endpoint_config,
     )
 
     account_list = metadata.get("accounts", []) if metadata else []

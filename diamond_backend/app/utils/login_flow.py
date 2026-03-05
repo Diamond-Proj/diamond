@@ -6,10 +6,7 @@ import urllib.parse  # Add this import for URL decoding
 import globus_sdk
 from flask import request
 from globus_compute_sdk import Client as GlobusComputeClient
-from globus_compute_sdk.sdk.login_manager import AuthorizerLoginManager
-from globus_compute_sdk.sdk.login_manager.manager import ComputeScopeBuilder
-from globus_compute_sdk.serialize import CombinedCode
-from globus_sdk.scopes import AuthScopes
+from globus_compute_sdk.serialize import AllCodeStrategies
 
 logging.basicConfig(
     level=logging.INFO,
@@ -37,7 +34,7 @@ def load_portal_client():
     )
 
 
-def initialize_compute_login_manager() -> AuthorizerLoginManager:
+def initialize_token_authorizer():
     tokens_cookie = request.cookies.get("tokens")
 
     if not tokens_cookie:
@@ -67,38 +64,17 @@ def initialize_compute_login_manager() -> AuthorizerLoginManager:
             f"Successfully parsed tokens with keys: {list(tokens_value.keys())}"
         )
 
-    openid_token = None
     funcx_service_token = None
 
     for key, value in tokens_value.items():
         if value.get("resource_server") == "funcx_service":
             funcx_service_token = value.get("access_token")
-        if "openid" in value.get("scope", ""):
-            openid_token = value.get("access_token")
 
-    ComputeScopes = ComputeScopeBuilder()
-
-    # TODO: Reevaluate the choice for authorizers here, some of these components
-    #       are now deprecated
-    assert funcx_service_token, "Missing access token for scope:funcx_service"
-    compute_auth = globus_sdk.AccessTokenAuthorizer(funcx_service_token)
-
-    assert openid_token, "Missing access token for scope:openid"
-    openid_auth = globus_sdk.AccessTokenAuthorizer(openid_token)
-
-    compute_login_manager = AuthorizerLoginManager(
-        authorizers={
-            ComputeScopes.resource_server: compute_auth,  # type: ignore[dict-item]
-            AuthScopes.resource_server: openid_auth,  # type: ignore[dict-item]
-        }
-    )
-    compute_login_manager.ensure_logged_in()
-
-    return compute_login_manager
+    return globus_sdk.AccessTokenAuthorizer(access_token=funcx_service_token)
 
 
 def initialize_globus_compute_client() -> GlobusComputeClient:
-    login_manager = initialize_compute_login_manager()
+    token_authorizer = initialize_token_authorizer()
     return GlobusComputeClient(
-        login_manager=login_manager, code_serialization_strategy=CombinedCode()
+        authorizer=token_authorizer, code_serialization_strategy=AllCodeStrategies()
     )

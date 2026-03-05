@@ -160,8 +160,9 @@ get_accounts = _make_shell_function(
 get_container_status = _make_shell_function('squeue --name={name} -h -o "%T"')
 
 
-get_task_status = _make_shell_function('squeue --name={task_name} -h -o "%T"')
-
+fetch_task_status = _make_shell_function(
+    "sacct -j {batch_job_id} -o State -n | head -n 1"
+)
 
 check_diamond_work_path = _make_shell_function(
     "if [ -d {diamond_work_path} ] && [ -w {diamond_work_path} ]; then echo 1; else echo 0; fi"
@@ -176,8 +177,11 @@ create_diamond_dir = _make_shell_function(
 # TODO: merge two log reader functions
 def log_reader_wrapper(log_file_path):
     """Wrapper function to read log file content"""
+    import os
+
+    abs_log_path = os.path.expanduser(os.path.expandvars(log_file_path))
     try:
-        with open(log_file_path, "r") as f:
+        with open(abs_log_path, "r") as f:
             content = f.read()
             # Check if build is complete
             is_complete = "INFO:    Build complete:" in content
@@ -191,8 +195,11 @@ def log_reader_wrapper(log_file_path):
 
 
 def get_task_log(log_file_path, eof_flag="EOF"):
+    import os
+
+    abs_log_path = os.path.expanduser(os.path.expandvars(log_file_path))
     try:
-        with open(log_file_path, "r") as f:
+        with open(abs_log_path, "r") as f:
             content = f.read()
             is_complete = content.endswith(eof_flag)
             return {"content": content, "is_complete": is_complete}
