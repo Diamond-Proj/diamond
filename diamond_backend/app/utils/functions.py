@@ -202,3 +202,30 @@ def get_task_log(log_file_path, eof_flag="EOF"):
             "is_complete": False,
             "error": str(e),
         }
+
+
+write_file = _make_shell_function(
+    r"""
+set -euo pipefail
+PYTHON_CMD="$(command -v python3 || command -v python || true)"
+if [ -z "$PYTHON_CMD" ]; then
+  echo "No python interpreter found on endpoint" >&2
+  exit 1
+fi
+
+"$PYTHON_CMD" <<'PYTHON'
+import base64
+import os
+
+file_path = base64.b64decode("{file_path_b64}").decode("utf-8")
+content = base64.b64decode("{content_b64}").decode("utf-8")
+
+parent_dir = os.path.dirname(file_path)
+if parent_dir:
+    os.makedirs(parent_dir, exist_ok=True)
+
+with open(file_path, "w", encoding="utf-8") as file_handle:
+    file_handle.write(content)
+PYTHON
+"""
+)

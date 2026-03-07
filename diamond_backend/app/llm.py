@@ -1,3 +1,4 @@
+import base64
 import json
 import logging
 import os
@@ -14,6 +15,7 @@ from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
     _escape_shell_braces,
     _make_shell_function,
+    write_file,
 )
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
 
@@ -39,6 +41,48 @@ def _resolve_path_for_endpoint(path_value, location):
     if os.path.isabs(path_value):
         return path_value
     return os.path.join(location, path_value)
+
+
+def _write_file_on_endpoint(endpoint_id, file_path, content):
+    """Write a file on the selected endpoint via Globus Compute."""
+    if not endpoint_id:
+        raise ValueError("endpoint is required")
+    if not isinstance(file_path, str) or not file_path.strip():
+        raise ValueError("file_path must be a non-empty string")
+    if content is None:
+        content = ""
+    if not isinstance(content, str):
+        raise ValueError("content must be a string")
+
+    globus_compute_client = initialize_globus_compute_client()
+    write_file_function_id = globus_compute_client.register_function(write_file)
+    write_file_task_id = globus_compute_client.run(
+        endpoint_id=endpoint_id,
+        function_id=write_file_function_id,
+        file_path_b64=base64.b64encode(file_path.encode("utf-8")).decode("ascii"),
+        content_b64=base64.b64encode(content.encode("utf-8")).decode("ascii"),
+    )
+
+    write_result = None
+    while True:
+        try:
+            write_result = globus_compute_client.get_result(write_file_task_id)
+            break
+        except TaskPending:
+            time.sleep(1)
+            continue
+
+    write_returncode = getattr(write_result, "returncode", None)
+    if write_returncode not in (None, 0):
+        write_stdout = getattr(write_result, "stdout", "")
+        write_stderr = getattr(write_result, "stderr", "")
+        logger.error(
+            "Failed to write file on endpoint. returncode=%s stdout=%s stderr=%s",
+            write_returncode,
+            write_stdout,
+            write_stderr,
+        )
+        raise RuntimeError("Failed to write file on endpoint")
 
 
 def _build_llmflux_bootstrap_lock_script(llmflux_version: str = "0.1.3"):
@@ -353,6 +397,7 @@ def launch_llmflux(
     account,
     partition,
     hf_token,
+    diamond_dir,
     input_path="prompts.jsonl",
     output_path="results.json",
     model="Qwen2.5-3B-Instruct",
@@ -371,12 +416,6 @@ def launch_llmflux(
         raise ValueError("partition is required")
 
     globus_compute_client = initialize_globus_compute_client()
-    diamond_dir = g_database.get_diamond_dir(
-        endpoint_uuid=endpoint_id,
-        identity_id=identity_id,
-    )
-    if not diamond_dir:
-        raise ValueError("Unable to resolve endpoint work directory")
 
     resolved_input_path = _resolve_path_for_endpoint(input_path, diamond_dir)
     resolved_output_path = _resolve_path_for_endpoint(output_path, diamond_dir)
@@ -544,6 +583,7 @@ def diamond_launch_llmflux():
     account = payload.get("account")
     partition = payload.get("partition")
     input_path = payload.get("input_path", "prompts.jsonl")
+    input_content = payload.get("input_content", "")
     output_path = payload.get("output_path", "results.json")
     model = payload.get("model", "Qwen2.5-3B-Instruct")
     engine = payload.get("engine", "vllm")
@@ -571,7 +611,18 @@ def diamond_launch_llmflux():
     if not isinstance(task_name, str) or not task_name.strip():
         return jsonify({"error": "taskName must be a non-empty string"}), 400
     task_name = task_name.strip()
+
+    diamond_dir = g_database.get_diamond_dir(
+        endpoint_uuid=endpoint_id,
+        identity_id=identity_id,
+    )
+    if not diamond_dir:
+        return jsonify({"error": "Diamond directory not found"}), 400
+
     try:
+        if input_content:
+            resolved_input_path = _resolve_path_for_endpoint(input_path, diamond_dir)
+            _write_file_on_endpoint(endpoint_id, resolved_input_path, input_content)
         submission = launch_llmflux(
             endpoint_id=endpoint_id,
             identity_id=identity_id,
@@ -579,6 +630,7 @@ def diamond_launch_llmflux():
             account=account,
             partition=partition,
             hf_token=hf_token,
+            diamond_dir=diamond_dir,
             input_path=input_path,
             output_path=output_path,
             model=model,
@@ -616,3 +668,34 @@ def diamond_launch_llmflux():
             "output_path": submission["output_path"],
         }
     )
+
+
+@app.route("/api/write_file", methods=["POST"])
+@authenticated
+def diamond_write_file():
+    payload = request.get_json(silent=True) or {}
+    endpoint_id = payload.get("endpoint") or payload.get("endpoint_uuid")
+    file_path = payload.get("file_path")
+    content = payload.get("content")
+    try:
+        _write_file_on_endpoint(endpoint_id, file_path, content)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    except RuntimeError as e:
+        logger.exception("Failed to write file to endpoint: %s", e)
+        return jsonify({"error": str(e)}), 500
+    except ComputeAPIError as e:
+        logger.exception("Globus Compute error while writing file: %s", e)
+        return jsonify(
+            {"status": e.http_status, "messages": e.messages, "error": str(e)}
+        ), e.http_status
+    except Exception as e:
+        logger.exception("Unexpected error while writing file: %s", e)
+        return jsonify(
+            {
+                "status": 500,
+                "messages": ["Failed to write file to endpoint"],
+                "error": str(e),
+            }
+        ), 500
+    return jsonify({"status": "success"})
