@@ -188,6 +188,18 @@ class Database:
         container = Container.query.filter_by(
             container_task_id=container_task_id
         ).first()
+        if not container:
+            raise TaskNotFoundError(task_id=container_task_id)
+        container.container_status = container_status
+        db.session.commit()
+
+    def update_container_status_by_name(self, container_name, container_status):
+        logger.info(
+            f"Updating container status by name: {container_name}, {container_status}"
+        )
+        container = Container.query.filter_by(name=container_name).first()
+        if not container:
+            raise TaskNotFoundError(task_id=container_name)
         container.container_status = container_status
         db.session.commit()
 

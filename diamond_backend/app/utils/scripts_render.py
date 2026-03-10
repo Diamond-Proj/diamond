@@ -47,6 +47,7 @@ def render_build_container_script(
     account,
     reservation,
     container_module_command,
+    slurm_options="",
 ):
     build_container_template = env.get_template("build_container.j2")
     build_container_script = build_container_template.render(
@@ -59,6 +60,7 @@ def render_build_container_script(
         account=account,
         reservation=reservation,
         container_module_command=container_module_command,
+        slurm_options=slurm_options,
     )
     return build_container_script
 
