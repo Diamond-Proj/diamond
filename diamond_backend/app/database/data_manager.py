@@ -134,6 +134,13 @@ class Database:
             .all()
         )
 
+    def get_task(self, task_id: str, identity_id: str | None = None) -> Task | None:
+        logger.info(f"Loading task by id: {task_id}")
+        query = Task.query.filter_by(task_id=task_id)
+        if identity_id is not None:
+            query = query.filter_by(identity_id=identity_id)
+        return query.first()
+
     def delete_task(self, task_id):
         logger.info(f"Deleting task: {task_id}")
         Task.query.filter_by(task_id=task_id).delete()

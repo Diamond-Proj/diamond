@@ -2,7 +2,11 @@ import pytest
 
 from diamond_backend.app.tasks import (
     _build_finetuned_artifact_path,
+    _build_vllm_host_candidates,
+    _build_vllm_task_log_info,
+    _derive_vllm_port_from_batch_job_id,
     _extract_artifact_path_from_submit_stdout,
+    _parse_vllm_task_log_info,
     _validate_finetuned_model_name,
 )
 from diamond_backend.app.utils.functions import _escape_shell_braces
@@ -227,3 +231,83 @@ DIAMOND_ARTIFACT_PATH=/work/nvme/bcrc/hxie6/test2/demo-sft
         == "/work/nvme/bcrc/hxie6/test2/demo-sft"
     )
     assert _extract_artifact_path_from_submit_stdout("Submitted batch job 123456") == ""
+
+
+def test_render_vllm_template_script():
+    script = render_task_template_script(
+        "vllm-inference.j2",
+        {
+            "location": "/tmp",
+            "task_name": "vllm-demo",
+            "stdout_path": "/tmp/vllm.stdout",
+            "stderr_path": "/tmp/vllm.stderr",
+            "num_of_nodes": 1,
+            "time_duration": "08:00:00",
+            "partition": "gpu",
+            "account": "proj",
+            "slurm_options": "#SBATCH --gpus-per-node=1",
+            "reservation": "",
+            "container_module_command": "module load apptainer",
+            "model_path": "/work/model/path",
+            "container_path": "/work/images/vllm.sif",
+            "served_model_name": "diamond-assistant",
+            "max_model_len": 2048,
+            "vllm_extra_args": "--gpu-memory-utilization 0.95",
+        },
+    )
+    assert "vllm-demo.submit" in script
+    assert "--bind /work/model/path:/model" in script
+    assert "/work/images/vllm.sif" in script
+    assert "VLLM_PORT=\\$(( 40000 + 10#\\${SLURM_JOB_ID: -4} ))" in script
+    assert '--served-model-name "diamond-assistant"' in script
+    assert 'sbatch_output="$(sbatch' in script
+
+
+def test_parse_vllm_task_log_info():
+    assert _parse_vllm_task_log_info("vllm_task|model=diamond-assistant") == {
+        "model": "diamond-assistant",
+    }
+    assert _parse_vllm_task_log_info("something-else") is None
+    assert _build_vllm_task_log_info("  ") == "vllm_task|model=diamond-assistant"
+    assert _build_vllm_task_log_info("qwen") == "vllm_task|model=qwen"
+    assert _derive_vllm_port_from_batch_job_id("123456") == 43456
+    assert _derive_vllm_port_from_batch_job_id("84") == 40084
+    assert _derive_vllm_port_from_batch_job_id("abc") is None
+
+
+def test_build_vllm_host_candidates():
+    assert _build_vllm_host_candidates("gpu001", "delta.ncsa.illinois.edu") == [
+        "gpu001",
+        "gpu001.ncsa.illinois.edu",
+    ]
+    assert _build_vllm_host_candidates(
+        "gpu001.ncsa.illinois.edu", "delta.ncsa.illinois.edu"
+    ) == ["gpu001.ncsa.illinois.edu"]
+    assert _build_vllm_host_candidates("", "delta.ncsa.illinois.edu") == []
+
+
+def test_render_vllm_template_survives_shellfunction_formatting():
+    script = render_task_template_script(
+        "vllm-inference.j2",
+        {
+            "location": "/tmp",
+            "task_name": "vllm-demo",
+            "stdout_path": "/tmp/vllm.stdout",
+            "stderr_path": "/tmp/vllm.stderr",
+            "num_of_nodes": 1,
+            "time_duration": "08:00:00",
+            "partition": "gpu",
+            "account": "proj",
+            "slurm_options": "",
+            "reservation": "",
+            "container_module_command": "",
+            "model_path": "/work/model/path",
+            "container_path": "/work/images/vllm.sif",
+            "served_model_name": "diamond-assistant",
+            "max_model_len": 2048,
+            "vllm_extra_args": "",
+        },
+    )
+    escaped_script = _escape_shell_braces(script)
+    formatted = escaped_script.format()
+    assert "VLLM_PORT=\\$(( 40000 + 10#\\${SLURM_JOB_ID: -4} ))" in formatted
