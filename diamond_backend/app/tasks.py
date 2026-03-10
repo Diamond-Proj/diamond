@@ -14,6 +14,7 @@ from diamond_backend.app.utils.config_loader import (
 from diamond_backend.app.utils.data_prep import globus_compute_wrapped_run
 from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
+    _escape_shell_braces,
     _make_shell_function,
     fetch_task_status,
     get_task_log,
@@ -41,6 +42,42 @@ SLURM_STATE_MAPPING = {
 }
 
 TERMINAL_STATES = ["COMPLETED", "COMPLETING", "FAILED", "MISSING"]
+FINETUNED_MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+ARTIFACT_PATH_MARKER_PATTERN = re.compile(r"^DIAMOND_ARTIFACT_PATH=(.+)$", re.MULTILINE)
+
+
+def _validate_finetuned_model_name(value):
+    if not isinstance(value, str):
+        raise ValueError("finetuned_model_name must be a non-empty string")
+
+    normalized_value = value.strip()
+    if not normalized_value:
+        raise ValueError("finetuned_model_name must be a non-empty string")
+    if normalized_value in {".", ".."}:
+        raise ValueError("finetuned_model_name cannot be '.' or '..'")
+    if "/" in normalized_value or "\\" in normalized_value:
+        raise ValueError("finetuned_model_name cannot contain path separators")
+    if not FINETUNED_MODEL_NAME_PATTERN.fullmatch(normalized_value):
+        raise ValueError(
+            "finetuned_model_name can only contain letters, numbers, '.', '-', '_'"
+        )
+
+    return normalized_value
+
+
+def _build_finetuned_artifact_path(*, finetuned_model_path, finetuned_model_name):
+    if not finetuned_model_path or not finetuned_model_name:
+        return ""
+    return os.path.join(str(finetuned_model_path).strip(), finetuned_model_name)
+
+
+def _extract_artifact_path_from_submit_stdout(submit_stdout):
+    if not isinstance(submit_stdout, str):
+        return ""
+    match = ARTIFACT_PATH_MARKER_PATTERN.search(submit_stdout)
+    if not match:
+        return ""
+    return match.group(1).strip()
 
 
 @app.route("/api/submit_task", methods=["POST"])
@@ -62,6 +99,15 @@ def diamond_endpoint_submit_job():
                 return value
         return default
 
+    def pick_raw_field(*keys):
+        for key in keys:
+            if key in request_data:
+                return True, request_data.get(key)
+        for key in keys:
+            if key in task_define:
+                return True, task_define.get(key)
+        return False, None
+
     endpoint_id = pick_field("endpoint")
     task_name = pick_field("taskName", "task_name")
     partition = pick_field("partition")
@@ -75,6 +121,22 @@ def diamond_endpoint_submit_job():
     task_template_name = pick_field("task_template")
     identity_id = request.cookies.get("primary_identity")
     dataset_id = pick_field("dataset_id")
+    finetuned_model_path = pick_field("finetuned_model_path", default="")
+    finetuned_model_name_present, raw_finetuned_model_name = pick_raw_field(
+        "finetuned_model_name"
+    )
+    finetuned_model_name = None
+    if finetuned_model_name_present:
+        try:
+            finetuned_model_name = _validate_finetuned_model_name(
+                raw_finetuned_model_name
+            )
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+    artifact_path = _build_finetuned_artifact_path(
+        finetuned_model_path=finetuned_model_path,
+        finetuned_model_name=finetuned_model_name,
+    )
 
     if not endpoint_id:
         return jsonify({"error": "endpoint is required"}), 400
@@ -173,6 +235,10 @@ def diamond_endpoint_submit_job():
             "task_command": task_command,
             "slurm_options": slurm_options,
         }
+        if finetuned_model_name is not None:
+            render_context["finetuned_model_name"] = finetuned_model_name
+        if finetuned_model_path:
+            render_context["finetuned_model_path"] = str(finetuned_model_path).strip()
         try:
             submit_task_script = render_task_template_script(
                 str(task_template_name), render_context
@@ -198,7 +264,7 @@ def diamond_endpoint_submit_job():
             slurm_options=slurm_options,
         )
     logger.info(f"Submit task script: {submit_task_script}")
-    submit_task_shell = _make_shell_function(submit_task_script)
+    submit_task_shell = _make_shell_function(_escape_shell_braces(submit_task_script))
     function_id = globus_compute_client.register_function(submit_task_shell)
     try:
         task_id = globus_compute_wrapped_run(
@@ -267,6 +333,10 @@ def diamond_endpoint_submit_job():
             }
         ), 500
 
+    rendered_artifact_path = _extract_artifact_path_from_submit_stdout(submit_stdout)
+    if rendered_artifact_path:
+        artifact_path = rendered_artifact_path
+
     # Parse SLURM job ID from output - currently only supporting SLURM-based systems
     match = re.search(r"Submitted batch job (\d+)", submit_stdout)
     if not match:
@@ -302,7 +372,7 @@ def diamond_endpoint_submit_job():
         stdout_path=stdout_path,
         stderr_path=stderr_path,
         compute_endpoint_id=endpoint_id,
-        checkpoint_path="",  # Will be set by backend
+        checkpoint_path=artifact_path,
     )
     return jsonify(
         {
@@ -457,6 +527,7 @@ def diamond_get_task_status():
             },
             "result": task.stdout_path,
             "error": task.stderr_path,
+            "artifact_path": task.checkpoint_path,
         }
         for task in updated_tasks
     }
