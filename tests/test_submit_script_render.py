@@ -11,7 +11,6 @@ from diamond_backend.app.tasks import (
 )
 from diamond_backend.app.utils.functions import _escape_shell_braces
 from diamond_backend.app.utils.scripts_render import (
-    render_build_container_script,
     render_submit_task_script,
     render_task_template_script,
 )
@@ -312,24 +311,3 @@ def test_render_vllm_template_survives_shellfunction_formatting():
     escaped_script = _escape_shell_braces(script)
     formatted = escaped_script.format()
     assert "VLLM_PORT=\\$(( 40000 + 10#\\${SLURM_JOB_ID: -4} ))" in formatted
-
-
-def test_render_build_container_script_with_slurm_options():
-    script = render_build_container_script(
-        container_name="demo-image",
-        location="/tmp",
-        stdout_path="/tmp/demo-image.stdout",
-        stderr_path="/tmp/demo-image.stderr",
-        time_duration="00:30:00",
-        partition="gpu",
-        account="project",
-        reservation="",
-        container_module_command="module load apptainer",
-        slurm_options="#SBATCH --gpus-per-node=1\n#SBATCH --constraint=a100",
-    )
-    assert "#SBATCH --gpus-per-node=1" in script
-    assert "#SBATCH --constraint=a100" in script
-    assert "#SBATCH --mem=40G" in script
-    assert "module load apptainer" in script
-    assert "/tmp/demo-image.submit" in script
-    assert "sbatch" in script

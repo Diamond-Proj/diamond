@@ -10,9 +10,6 @@ cat << EOF > {{ location }}/{{ container_name }}.submit
 #SBATCH --nodes=1
 #SBATCH --ntasks-per-node=1
 #SBATCH --mem=40G
-{%- if slurm_options %}
-{{ slurm_options }}
-{%- endif %}
 
 {{ container_module_command }}
 apptainer build {{ location }}/{{ container_name }}.sif {{ location }}/{{ container_name }}.def
