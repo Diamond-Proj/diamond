@@ -21,11 +21,13 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 #SBATCH --ntasks-per-node=1
 {{ slurm_options }}
 
+module load tacc-apptainer
+
 apptainer exec --nv \
   --bind {{ model_path }}:/model \
   --bind {{ dataset_path }}:/app/DeepSpeedExamples/applications/DeepSpeed-Chat/data \
   --bind $resolved_finetuned_model_path:/scratch \
-  /work/nvme/bcrc/hxie6/deepspeed_chat.sif \
+  /scratch2/09912/haotianxie/deepspeed_chat.sif \
   bash <<'DIAMOND_TASK_END'
 set -euo pipefail
 
@@ -51,20 +53,27 @@ else
   echo "Warning: tokenizer files not found under /model; skipping tokenizer copy" >&2
 fi
 
-deepspeed --num_gpus 1 --master_port "\$MASTER_PORT" \
+export CUDA_VISIBLE_DEVICES=0,1,2,3
+unset PYTORCH_CUDA_ALLOC_CONF
+
+deepspeed --num_gpus 4 --master_port "\$MASTER_PORT" \
   /app/DeepSpeedExamples/applications/DeepSpeed-Chat/training/step1_supervised_finetuning/main.py \
   --model_name_or_path /model \
-  --learning_rate 3e-6 \
+  --learning_rate 2e-6 \
   --data_path local/jsonfile \
   --num_train_epochs 4 \
   --gradient_accumulation_steps 8 \
   --lora_dim 32 \
   --zero_stage 1 \
   --per_device_train_batch_size 1 \
+  --max_seq_len 512 \
+  --gradient_checkpointing \
+  --dtype fp16 \
+  --compute_fp32_loss \
   --deepspeed \
   --enable_tensorboard \
-  --output_dir /scratch/{{ finetuned_model_name }} \
-  --tensorboard_path /scratch/tensorboard
+  --output_dir "$SCRATCH"/{{ finetuned_model_name }} \
+  --tensorboard_path "$SCRATCH"/tensorboard
 DIAMOND_TASK_END
 
 EOF
