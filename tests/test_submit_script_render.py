@@ -148,6 +148,38 @@ def test_render_task_template_script():
     assert "export MASTER_PORT=\\$(( 50000 + \\${SLURM_JOB_ID: -4} ))" in script
 
 
+def test_render_container_build_template_script():
+    script = render_task_template_script(
+        "container-build.j2",
+        {
+            "task_name": "image-build-demo",
+            "container_name": "image-build-demo",
+            "location": "/tmp/diamond",
+            "stdout_path": "/tmp/diamond/logs/image-build-demo.stdout",
+            "stderr_path": "/tmp/diamond/logs/image-build-demo.stderr",
+            "time_duration": "00:30:00",
+            "partition": "gpu",
+            "account": "proj",
+            "reservation": "",
+            "container_module_command": "module load apptainer",
+            "base_image": "ubuntu:22.04",
+            "commands": "python -m pip install torch",
+            "environment": "HF_HOME=/tmp/hf",
+        },
+    )
+    assert "image-build-demo.def" in script
+    assert "image-build-demo.submit" in script
+    assert "Bootstrap: docker" in script
+    assert "From: ubuntu:22.04" in script
+    assert "cat << 'COMMANDS_EOF' > commands.sh" in script
+    assert "python -m pip install torch" in script
+    assert "module load apptainer" in script
+    assert (
+        "apptainer build /tmp/diamond/image-build-demo.sif /tmp/diamond/image-build-demo.def"
+        in script
+    )
+
+
 def test_render_task_template_script_survives_shellfunction_formatting():
     script = render_task_template_script(
         "deepspeed-sft.j2",

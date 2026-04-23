@@ -4,12 +4,31 @@ from flask import jsonify, request
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import RequestMalformed
+from diamond_backend.app.task_runtime import refresh_identity_task_statuses
 from diamond_backend.app.utils.decorators import authenticated
 
 logger = logging.getLogger(__name__)
 
 
-def _serialize_containers(containers, current_identity=None, existing=None):
+def _resolve_container_status(container, task_lookup=None):
+    if not task_lookup or not getattr(container, "container_task_id", None):
+        return container.container_status or ""
+
+    linked_task = task_lookup.get(container.container_task_id)
+    if not linked_task:
+        return container.container_status or ""
+
+    task_status = str(linked_task.task_status or "").strip().upper()
+    if task_status in {"COMPLETED", "COMPLETING"}:
+        return "ACTIVE"
+    if task_status == "MISSING":
+        return "FAILED"
+    return task_status
+
+
+def _serialize_containers(
+    containers, current_identity=None, existing=None, task_lookup=None
+):
     containers_data = existing if existing is not None else {}
     endpoint_host_cache = {}
 
@@ -25,7 +44,7 @@ def _serialize_containers(containers, current_identity=None, existing=None):
 
         containers_data[container.name] = {
             "container_task_id": container.container_task_id,
-            "status": container.container_status or "",
+            "status": _resolve_container_status(container, task_lookup),
             "base_image": container.base_image,
             "location": container.location,
             "host_name": host_name,
@@ -44,8 +63,14 @@ def _serialize_containers(containers, current_identity=None, existing=None):
 def get_all_containers():
     identity_id = request.cookies.get("primary_identity")
     logger.info(f"Loading all containers for identity_id: {identity_id}")
+    tasks = refresh_identity_task_statuses(identity_id)
+    task_lookup = {task.task_id: task for task in tasks}
     containers = g_database.load_containers(identity_id=identity_id)
-    containers_data = _serialize_containers(containers, current_identity=identity_id)
+    containers_data = _serialize_containers(
+        containers,
+        current_identity=identity_id,
+        task_lookup=task_lookup,
+    )
 
     managed_hosts = set()
     for endpoint in g_database.get_endpoints(identity_id=identity_id):
@@ -88,10 +113,16 @@ def get_containers_on_endpoint():
     logger.info(
         f"Loading containers for identity_id: {identity_id} on endpoint: {endpoint_uuid}"
     )
+    tasks = refresh_identity_task_statuses(identity_id)
+    task_lookup = {task.task_id: task for task in tasks}
     containers = g_database.load_containers_by_endpoint(
         identity_id=identity_id, endpoint_uuid=endpoint_uuid
     )
-    containers_data = _serialize_containers(containers, current_identity=identity_id)
+    containers_data = _serialize_containers(
+        containers,
+        current_identity=identity_id,
+        task_lookup=task_lookup,
+    )
 
     endpoint_host = g_database.get_endpoint_host(endpoint_uuid=endpoint_uuid)
     public_containers_data = {}
