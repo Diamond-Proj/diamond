@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "Diamond HPC Admin Backend - Flask API server"
 readme = "README.md"
 requires-python = "==3.11.*"
+
 dependencies = [
     "diamond-hpc==0.0.*",
     "flask==3.1.*",
@@ -29,6 +30,9 @@ dev = [
     "tox>=4.28.3",
     "sqlalchemy[mypy]",
 ]
+
+[tool.uv]
+required-version = ">=0.8.5"
 
 [tool.ruff]
 target-version = "py311"
