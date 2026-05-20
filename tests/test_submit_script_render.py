@@ -119,7 +119,7 @@ def test_render_with_dataset():
 
 def test_render_task_template_script():
     script = render_task_template_script(
-        "deepspeed-sft.j2",
+        "deepspeed-sft-delta.j2",
         {
             "location": "/tmp",
             "task_name": "demo-task",
@@ -182,7 +182,7 @@ def test_render_container_build_template_script():
 
 def test_render_task_template_script_survives_shellfunction_formatting():
     script = render_task_template_script(
-        "deepspeed-sft.j2",
+        "deepspeed-sft-delta.j2",
         {
             "location": "/tmp",
             "task_name": "demo-task",
