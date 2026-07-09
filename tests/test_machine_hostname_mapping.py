@@ -7,8 +7,9 @@ from diamond_backend.app.utils.host_machine_mapping import KNOWN_MACHINES, resol
     "hostname, expected",
     [
         ("login.delta.ncsa.illinois.edu", "Delta@NCSA"),
+        ("dt-login01.delta.ncsa.illinois.edu", "Delta@NCSA"),
+        ("gh-login01.delta.ncsa.illinois.edu", "DeltaAI@NCSA"),
         ("login00.anvil.rcac.purdue.edu", "Anvil@RCAC"),
-        ("dtai-login.delta.ncsa.illinois.edu", "Delta@NCSA"),
         ("login2.vista.tacc.utexas.edu", "System@TACC"),
         ("foo.bar", "unknown"),
     ],
