@@ -43,3 +43,9 @@ next-env.d.ts
 .coverage*
 coverage.xml
 
+# Agents
+.agents/
+.claude/
+AGENTS.md
+CLAUDE.md
+
