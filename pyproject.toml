@@ -3,7 +3,7 @@ name = "diamond-admin-backend"
 version = "0.1.0"
 description = "Diamond HPC Admin Backend - Flask API server"
 readme = "README.md"
-requires-python = "==3.11.*"
+requires-python = "==3.13.*"
 
 dependencies = [
     "diamond-hpc==0.0.*",
