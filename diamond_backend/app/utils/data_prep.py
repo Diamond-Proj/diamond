@@ -21,17 +21,18 @@ _RETRYABLE_COMPUTE_ERROR_CODES = {"RESOURCE_CONFLICT"}
 logger = logging.getLogger(__name__)
 
 
-DELTA_MEP_STATUS = {
-    "uuid": "44a4297d-d07d-41a8-8ce9-c89464b23330",
-    "name": "NCSA Delta Multi-User Endpoint",
-    "display_name": "NCSA Delta Multi-User Endpoint",
-    "owner": "18096de1-8571-4a48-9b30-4968b1d5a81b",
-}
-
-DELTA_USER_ENDPOINT_CONFIG = {
-    "account": "bcrc-delta-cpu",
-    "exclusive": False,
-    "partition": "cpu-interactive",
+MEP_DEFAULT_ENDPOINT_CONFIG = {
+    # DELTA MEP
+    "4a266c83-3c68-4a75-99b3-9c7459f2f7ef": {
+        "account": "bcrc-delta-cpu",
+        "exclusive": False,
+        "partition": "cpu-interactive",
+    },
+    # ANVIL MEP
+    "5aafb4c1-27b2-40d8-a038-a0277611868f": {
+        "exclusive": False,
+        "partition": "shared",
+    },
 }
 
 
@@ -152,7 +153,6 @@ def endpoint_initialization_status(
     """This method returns a list of all endpoints and their current user selection state"""
 
     all_endpoints = global_compute_client.get_endpoints(role="any")
-    all_endpoints.append(DELTA_MEP_STATUS)
     endpoints_in_db = database.get_endpoints(identity_id=identity_id)
 
     endpoint_map = {}
@@ -176,8 +176,6 @@ def register_all_endpoints(
 
     # Specify role=Any to fetch MEPs in addition to those owned by the user
     endpoints = globus_compute_client.get_endpoints(role="any")
-    # Add DELTA MEP that's not public
-    endpoints.append(DELTA_MEP_STATUS)
     all_endpoints = []
     for endpoint in endpoints:
         logger.info(f"Checking endpoint: {endpoint}")
@@ -201,10 +199,9 @@ def register_all_endpoints(
             identity_id=identity_id, endpoint_uuid=endpoint_uuid
         ):
             logger.info(f"Saving endpoint: {endpoint_name}")
-            user_endpoint_config = None
-            # Delta MEP specific hack
-            if endpoint_uuid == "44a4297d-d07d-41a8-8ce9-c89464b23330":
-                user_endpoint_config = DELTA_USER_ENDPOINT_CONFIG
+
+            # MEP specific hack
+            user_endpoint_config = MEP_DEFAULT_ENDPOINT_CONFIG.get(endpoint_uuid, None)
             database.save_endpoint(
                 identity_id=identity_id,
                 endpoint_name=endpoint_name,

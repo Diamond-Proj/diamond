@@ -60,8 +60,7 @@ def test_list_endpoints(test_db, mock_gc_client):
     assert isinstance(eps, dict)
 
     assert sum([1 for ep in eps.values() if ep["is_managed"]]) == 2
-    # DELTA MEP is added via a hack, expect an additional ENDPOINT
-    assert sum([1 for ep in eps.values() if not ep["is_managed"]]) == 3
+    assert sum([1 for ep in eps.values() if not ep["is_managed"]]) == 2
 
     for ep in eps.values():
         if ep["name"] == "NON_MANAGED_1":
