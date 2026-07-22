@@ -1,6 +1,6 @@
 version = 1
 revision = 3
-requires-python = "==3.13.*"
+requires-python = "==3.13.0"
 
 [[package]]
 name = "annotated-types"
@@ -224,7 +224,7 @@ requires-dist = [
     { name = "flask", specifier = "==3.1.*" },
     { name = "flask-cors", specifier = "==5.0.*" },
     { name = "flask-sqlalchemy", specifier = "==3.1.1" },
-    { name = "globus-compute-sdk", specifier = ">=4.7" },
+    { name = "globus-compute-sdk", specifier = ">=4.15" },
     { name = "gunicorn", specifier = "==23.0.*" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "psycopg2-binary", specifier = "==2.9.*" },
@@ -354,19 +354,19 @@ wheels = [
 
 [[package]]
 name = "globus-compute-common"
-version = "0.7.1"
+version = "1.0.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pydantic" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/e9/d9/b23739cb26a7a9d71e0efede7092d2ba1ef505c0b4d0582ad582144ded2c/globus_compute_common-0.7.1.tar.gz", hash = "sha256:2797aa7fdc91e7f944dd072eec4625766511d26af559bac374b1fb34321c94cb", size = 25028, upload-time = "2025-06-06T20:00:29.68Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/91/30/5698213bb7994082c59df0724621d7f6a7cc115afdb6779c44d366ce6cff/globus_compute_common-1.0.0.tar.gz", hash = "sha256:ebe2d37da999cf056d2d651267414a523b56df603bc7a388e764a7179de41f0d", size = 24679, upload-time = "2026-06-22T19:59:29.02Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f5/48/200feced505df15ec60931d84d57f1dbc7b99a4749d190ea6eb9317eccab/globus_compute_common-0.7.1-py3-none-any.whl", hash = "sha256:48a2af1d5067ca18bc6a24dc2457fee23d5bf6285a1128a7cd28a4a5f5758c59", size = 35464, upload-time = "2025-06-06T20:00:28.01Z" },
+    { url = "https://files.pythonhosted.org/packages/89/3b/ac511729885a7e1863582b14bf54cb4d22dbf627d08a957e8d4cbcd287c2/globus_compute_common-1.0.0-py3-none-any.whl", hash = "sha256:27c256e9d89a4322529817a39cdfc7703056ddff810352bc4659fb2244840571", size = 34864, upload-time = "2026-06-22T19:59:28.107Z" },
 ]
 
 [[package]]
 name = "globus-compute-sdk"
-version = "4.7.0"
+version = "4.15.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
@@ -376,15 +376,14 @@ dependencies = [
     { name = "globus-sdk" },
     { name = "packaging" },
     { name = "pika" },
-    { name = "psutil" },
     { name = "requests" },
     { name = "rich" },
     { name = "tblib" },
     { name = "texttable" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ef/bc/11d7c9ebab9a70a5d9fb02f361eccf689c576a443d7754741d3c8d5d6764/globus_compute_sdk-4.7.0.tar.gz", hash = "sha256:0dc5724160b4f00d01a680e48dfe0d1f85d7fa171e0277d31f4fd9be9d4df53d", size = 71305, upload-time = "2026-02-25T15:37:50.805Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/a3/f7/e2d1fdc02119be6a560cb610d86c34618e887b61c92c3e7c3940246acabf/globus_compute_sdk-4.15.0.tar.gz", hash = "sha256:6e4937756fd0769948296ba909029e3df81f802e6d59f216e7f90305f6624f34", size = 65713, upload-time = "2026-07-15T20:24:43.117Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/77/862e4bc558a0c7c762a8fa92853b89fe8caf989d4f4c93bdf643236bbe1c/globus_compute_sdk-4.7.0-py3-none-any.whl", hash = "sha256:2dbd3516b94f3bc64578afaa8e82ede57daf7e881ca93cd955631b449f2bf83a", size = 83748, upload-time = "2026-02-25T15:37:49.295Z" },
+    { url = "https://files.pythonhosted.org/packages/a5/ba/15e85dbc34e6aab5794165365ece4cc35621ea1ea91c11bda0bfe767e15a/globus_compute_sdk-4.15.0-py3-none-any.whl", hash = "sha256:ccde95af6711c62106353c4078429025b3f4f3d79e7f809f59876289ec9715bf", size = 74850, upload-time = "2026-07-15T20:24:41.67Z" },
 ]
 
 [[package]]
@@ -623,20 +622,6 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/08/39/679ca9b26c7bb2999ff122d50faa301e49af82ca9c066ec061cfbc0c6784/pre_commit-4.2.0.tar.gz", hash = "sha256:601283b9757afd87d40c4c4a9b2b5de9637a8ea02eaff7adc2d0fb4e04841146", size = 193424, upload-time = "2025-03-18T21:35:20.987Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/88/74/a88bf1b1efeae488a0c0b7bdf71429c313722d1fc0f377537fbe554e6180/pre_commit-4.2.0-py2.py3-none-any.whl", hash = "sha256:a009ca7205f1eb497d10b845e52c838a98b6cdd2102a6c8e4540e94ee75c58bd", size = 220707, upload-time = "2025-03-18T21:35:19.343Z" },
-]
-
-[[package]]
-name = "psutil"
-version = "5.9.8"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/90/c7/6dc0a455d111f68ee43f27793971cf03fe29b6ef972042549db29eec39a2/psutil-5.9.8.tar.gz", hash = "sha256:6be126e3225486dff286a8fb9a06246a5253f4c7c53b475ea5f5ac934e64194c", size = 503247, upload-time = "2024-01-19T20:47:09.517Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/e7/e3/07ae864a636d70a8a6f58da27cb1179192f1140d5d1da10886ade9405797/psutil-5.9.8-cp36-abi3-macosx_10_9_x86_64.whl", hash = "sha256:aee678c8720623dc456fa20659af736241f575d79429a0e5e9cf88ae0605cc81", size = 248702, upload-time = "2024-01-19T20:47:36.303Z" },
-    { url = "https://files.pythonhosted.org/packages/b3/bd/28c5f553667116b2598b9cc55908ec435cb7f77a34f2bff3e3ca765b0f78/psutil-5.9.8-cp36-abi3-manylinux_2_12_i686.manylinux2010_i686.manylinux_2_17_i686.manylinux2014_i686.whl", hash = "sha256:8cb6403ce6d8e047495a701dc7c5bd788add903f8986d523e3e20b98b733e421", size = 285242, upload-time = "2024-01-19T20:47:39.65Z" },
-    { url = "https://files.pythonhosted.org/packages/c5/4f/0e22aaa246f96d6ac87fe5ebb9c5a693fbe8877f537a1022527c47ca43c5/psutil-5.9.8-cp36-abi3-manylinux_2_12_x86_64.manylinux2010_x86_64.manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:d06016f7f8625a1825ba3732081d77c94589dca78b7a3fc072194851e88461a4", size = 288191, upload-time = "2024-01-19T20:47:43.078Z" },
-    { url = "https://files.pythonhosted.org/packages/6e/f5/2aa3a4acdc1e5940b59d421742356f133185667dd190b166dbcfcf5d7b43/psutil-5.9.8-cp37-abi3-win32.whl", hash = "sha256:bc56c2a1b0d15aa3eaa5a60c9f3f8e3e565303b465dbf57a1b730e7a2b9844e0", size = 251252, upload-time = "2024-01-19T20:47:52.88Z" },
-    { url = "https://files.pythonhosted.org/packages/93/52/3e39d26feae7df0aa0fd510b14012c3678b36ed068f7d78b8d8784d61f0e/psutil-5.9.8-cp37-abi3-win_amd64.whl", hash = "sha256:8db4c1b57507eef143a15a6884ca10f7c73876cdf5d51e713151c1236a0e68cf", size = 255090, upload-time = "2024-01-19T20:47:56.019Z" },
-    { url = "https://files.pythonhosted.org/packages/05/33/2d74d588408caedd065c2497bdb5ef83ce6082db01289a1e1147f6639802/psutil-5.9.8-cp38-abi3-macosx_11_0_arm64.whl", hash = "sha256:d16bbddf0693323b8c6123dd804100241da461e41d6e332fb0ba6058f630f8c8", size = 249898, upload-time = "2024-01-19T20:47:59.238Z" },
 ]
 
 [[package]]
