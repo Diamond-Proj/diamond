@@ -1,4 +1,5 @@
 import logging
+import sys
 from datetime import datetime
 
 from flask import current_app, jsonify, redirect, request
@@ -53,6 +54,7 @@ def healthcheck():
     """Health check endpoint."""
     logger.info("Health check route")
 
+    version_info = str(sys.version_info)
     # Get git information
     git_info = get_git_info()
     if git_info["commit_sha"] == "unknown":
@@ -61,6 +63,7 @@ def healthcheck():
                 "status": "unhealthy",
                 "timestamp": datetime.utcnow().isoformat(),
                 "git": git_info,
+                "python_version": version_info,
             }
         ), 500
     else:
@@ -69,6 +72,7 @@ def healthcheck():
                 "status": "healthy",
                 "timestamp": datetime.utcnow().isoformat(),
                 "git": git_info,
+                "python_version": version_info,
             }
         ), 200
 
