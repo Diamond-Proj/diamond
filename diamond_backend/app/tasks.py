@@ -1,16 +1,21 @@
+import base64
 import logging
 import os
 import re
 import time
+import uuid
 
-from flask import jsonify, request
+from flask import Response, jsonify, request
 from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.task_runtime import (
     TaskSubmissionError,
+    list_endpoint_directory,
+    read_endpoint_file_b64,
     read_remote_task_log,
     refresh_identity_task_statuses,
+    stage_base64_file_on_endpoint,
     submit_batch_script_task,
 )
 from diamond_backend.app.utils.config_loader import (
@@ -26,6 +31,49 @@ from diamond_backend.app.utils.scripts_render import (
 
 logger = logging.getLogger(__name__)
 FINETUNED_MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+UPLOAD_FIELD_SUFFIX = "_upload"
+# A single path component with no separators or traversal — the one gate for
+# every user-supplied name that becomes part of a filesystem path (upload
+# filenames, task_name staging dirs, artifact download filenames).
+SAFE_PATH_COMPONENT_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _is_safe_path_component(name):
+    return (
+        bool(name)
+        and name not in {".", ".."}
+        and bool(SAFE_PATH_COMPONENT_PATTERN.fullmatch(name))
+    )
+
+
+# Globus Compute caps task payloads at ~10MB, and kwargs are re-serialized with
+# another base64 pass (dill + base64), inflating the wire size to ~16/9 of the
+# raw bytes. 5MB decoded keeps the payload safely under the cap and matches the
+# frontend's limit.
+MAX_UPLOAD_CONTENT_BYTES = 5 * 1024 * 1024
+# Only raster image types are served inline; anything else (svg/html/...) is
+# forced to download so artifact content can never execute in the app's origin.
+# A fixed extension map is used instead of mimetypes.guess_type because the
+# latter consults host mime tables (e.g. /etc/mime.types) and can drift.
+INLINE_IMAGE_MIME_BY_EXTENSION = {
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
+    ".bmp": "image/bmp",
+}
+
+
+def _resolve_artifact_mimetype(filename):
+    """Return (mimetype, is_inline_image) for serving an artifact file."""
+    extension = os.path.splitext(filename)[1].lower()
+    inline_mimetype = INLINE_IMAGE_MIME_BY_EXTENSION.get(extension)
+    if inline_mimetype:
+        return inline_mimetype, True
+    return "application/octet-stream", False
+
+
 ARTIFACT_PATH_MARKER_PATTERN = re.compile(r"^DIAMOND_ARTIFACT_PATH=(.+)$", re.MULTILINE)
 VLLM_TASK_LOG_PREFIX = "vllm_task|"
 VLLM_READY_STATES = {"PENDING", "RUNNING", "COMPLETING"}
@@ -74,6 +122,77 @@ def _build_finetuned_artifact_path(*, finetuned_model_path, finetuned_model_name
     if not finetuned_model_path or not finetuned_model_name:
         return ""
     return os.path.join(str(finetuned_model_path).strip(), finetuned_model_name)
+
+
+def _validate_upload_field(key, content_b64, filename):
+    if not _is_safe_path_component(filename):
+        raise ValueError(
+            f"{key}_filename can only contain letters, numbers, '.', '-', '_'"
+        )
+    max_megabytes = MAX_UPLOAD_CONTENT_BYTES // (1024 * 1024)
+    # base64 expands 3 bytes to 4 chars, so the encoded length caps the decoded
+    # size. Reject oversized payloads before materializing them in memory.
+    if (len(content_b64) // 4) * 3 > MAX_UPLOAD_CONTENT_BYTES:
+        raise ValueError(f"{key} exceeds the {max_megabytes}MB upload limit")
+    try:
+        decoded = base64.b64decode(content_b64, validate=True)
+    except Exception:
+        raise ValueError(f"{key} must be valid base64-encoded content")
+    if len(decoded) > MAX_UPLOAD_CONTENT_BYTES:
+        raise ValueError(f"{key} exceeds the {max_megabytes}MB upload limit")
+
+
+def _stage_task_define_uploads(
+    task_define, *, endpoint_id, identity_id, location, task_name
+):
+    """Stage base64 `*_upload` fields as files on the endpoint.
+
+    The submit script travels to the endpoint as a single shell argument, which
+    the kernel caps at MAX_ARG_STRLEN (~128KB), so file payloads cannot be
+    embedded in it. Each non-empty `<key>_upload` field is written to
+    `<location>/uploads/<task_name>/<submission_id>/<key>/<filename>` through the
+    Globus Compute data plane and the field's value is replaced with that path
+    before the template is rendered. The per-submission id keeps a resubmission
+    of the same task name from overwriting a still-queued job's input, and the
+    per-key component keeps two upload fields from colliding on one filename.
+    """
+    upload_keys = [
+        key
+        for key, value in task_define.items()
+        if key.endswith(UPLOAD_FIELD_SUFFIX) and str(value or "").strip()
+    ]
+    if not upload_keys:
+        return dict(task_define)
+
+    # task_name becomes a directory component of the staged path and is
+    # otherwise free text, so it must be constrained to keep the write inside
+    # <location>/uploads/.
+    if not _is_safe_path_component(str(task_name or "")):
+        raise ValueError(
+            "taskName can only contain letters, numbers, '.', '-', '_' "
+            "when the task includes a file upload"
+        )
+
+    submission_id = uuid.uuid4().hex
+    staged = dict(task_define)
+    for key in upload_keys:
+        content_b64 = str(task_define[key]).strip()
+        filename = str(task_define.get(f"{key}_filename") or "").strip()
+        if not filename:
+            filename = "uploaded_file"
+        _validate_upload_field(key, content_b64, filename)
+        destination = os.path.join(
+            location, "uploads", task_name, submission_id, key, filename
+        )
+        stage_base64_file_on_endpoint(
+            endpoint_id=endpoint_id,
+            identity_id=identity_id,
+            file_path=destination,
+            content_b64=content_b64,
+        )
+        logger.info("Staged upload field %s to %s", key, destination)
+        staged[key] = destination
+    return staged
 
 
 def _extract_artifact_path_from_submit_stdout(submit_stdout):
@@ -486,14 +605,17 @@ def diamond_endpoint_submit_job():
                     container_name
                 )
                 container_path = os.path.join(
-                    container_dir_path, container_name + ".sif"
+                    str(container_dir_path).strip(),
+                    str(container_name).strip() + ".sif",
                 )
                 logger.info(f"Submit task container path: {container_path}")
             except Exception:
                 container_path = str(container_name)
     elif container_name:
         container_dir_path = g_database.get_container_path_by_name(container_name)
-        container_path = os.path.join(container_dir_path, container_name + ".sif")
+        container_path = os.path.join(
+            str(container_dir_path).strip(), str(container_name).strip() + ".sif"
+        )
         logger.info(f"Submit task container path: {container_path}")
 
     if not task_template_name:
@@ -528,6 +650,18 @@ def diamond_endpoint_submit_job():
     endpoint_host = g_database.get_endpoint_host(endpoint_uuid=endpoint_id)
     container_module_command = load_container_module_command(endpoint_host)
     if task_template_name:
+        try:
+            task_define = _stage_task_define_uploads(
+                task_define,
+                endpoint_id=endpoint_id,
+                identity_id=identity_id,
+                location=location,
+                task_name=task_name,
+            )
+        except ValueError as e:
+            return jsonify({"error": str(e)}), 400
+        except TaskSubmissionError as exc:
+            return jsonify(exc.to_response_payload()), exc.http_status
         render_context = {
             **task_define,
             "task_name": task_name,
@@ -640,6 +774,104 @@ def diamond_get_task_status():
 
     logger.debug(f"Updated task status response: {tasks_data}")
     return jsonify(tasks_data)
+
+
+def _load_task_with_artifact(task_id, identity_id):
+    # get_task drops the ownership filter when identity_id is None, so a
+    # missing identity must be rejected before the lookup.
+    if not identity_id:
+        return None, "", (jsonify({"error": "primary_identity is required"}), 400)
+    if not task_id:
+        return None, "", (jsonify({"error": "task_id is required"}), 400)
+    task = g_database.get_task(task_id=task_id, identity_id=identity_id)
+    if not task:
+        return None, "", (jsonify({"error": f"Task {task_id} not found"}), 404)
+    artifact_path = str(task.checkpoint_path or "").strip()
+    if not artifact_path:
+        return None, "", (jsonify({"error": "Task has no artifact path"}), 404)
+    return task, artifact_path, None
+
+
+@app.route("/api/task_output_files", methods=["GET"])
+@authenticated
+def diamond_list_task_output_files():
+    identity_id = request.cookies.get("primary_identity")
+    task_id = str(request.args.get("task_id", "")).strip()
+    task, artifact_path, error_response = _load_task_with_artifact(task_id, identity_id)
+    if error_response:
+        return error_response
+
+    try:
+        result = list_endpoint_directory(
+            endpoint_id=task.compute_endpoint_id,
+            identity_id=identity_id,
+            dir_path=artifact_path,
+        )
+    except TaskSubmissionError as exc:
+        return jsonify(exc.to_response_payload()), exc.http_status
+
+    if not isinstance(result, dict):
+        return jsonify({"error": "Unexpected response from endpoint"}), 502
+    if result.get("error"):
+        return jsonify({"error": result["error"]}), 404
+
+    return jsonify(
+        {
+            "artifact_path": artifact_path,
+            "entries": result.get("entries", []),
+            "truncated": bool(result.get("truncated", False)),
+        }
+    )
+
+
+@app.route("/api/task_output_file", methods=["GET"])
+@authenticated
+def diamond_get_task_output_file():
+    identity_id = request.cookies.get("primary_identity")
+    task_id = str(request.args.get("task_id", "")).strip()
+    filename = str(request.args.get("filename", "")).strip()
+    force_download = str(request.args.get("download", "")).strip() not in ("", "0")
+
+    task, artifact_path, error_response = _load_task_with_artifact(task_id, identity_id)
+    if error_response:
+        return error_response
+    if not _is_safe_path_component(filename):
+        return (
+            jsonify(
+                {"error": "filename can only contain letters, numbers, '.', '-', '_'"}
+            ),
+            400,
+        )
+
+    try:
+        result = read_endpoint_file_b64(
+            endpoint_id=task.compute_endpoint_id,
+            identity_id=identity_id,
+            artifact_path=artifact_path,
+            filename=filename,
+        )
+    except TaskSubmissionError as exc:
+        return jsonify(exc.to_response_payload()), exc.http_status
+
+    if not isinstance(result, dict):
+        return jsonify({"error": "Unexpected response from endpoint"}), 502
+    if result.get("error"):
+        error_message = str(result["error"])
+        status = 413 if "download limit" in error_message else 404
+        return jsonify({"error": error_message}), status
+
+    try:
+        content = base64.b64decode(result.get("content_b64", ""))
+    except Exception:
+        return jsonify({"error": "Failed to decode file content"}), 502
+
+    mimetype, is_inline_image = _resolve_artifact_mimetype(filename)
+    disposition = "inline" if is_inline_image and not force_download else "attachment"
+
+    response = Response(content, mimetype=mimetype)
+    response.headers["Content-Disposition"] = f'{disposition}; filename="{filename}"'
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    return response
 
 
 @app.route("/api/vllm_chat", methods=["POST"])

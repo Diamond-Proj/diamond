@@ -211,6 +211,111 @@ def get_task_log(log_file_path, eof_flag="EOF"):
         }
 
 
+def list_directory_entries(dir_path, max_entries=200):
+    """List an artifact path on the endpoint, returning names, sizes, and types.
+
+    The path may be a directory (inference output dir) or a single file (a
+    finetuned model checkpoint); whether it is a file or directory is only
+    knowable here on the endpoint. A file path lists as its single entry.
+    """
+    import os
+
+    abs_path = os.path.expanduser(os.path.expandvars(dir_path))
+    if os.path.isfile(abs_path):
+        try:
+            size = os.path.getsize(abs_path)
+        except Exception:
+            size = None
+        return {
+            "entries": [
+                {"name": os.path.basename(abs_path), "is_dir": False, "size": size}
+            ],
+            "truncated": False,
+        }
+
+    try:
+        names = sorted(os.listdir(abs_path))
+    except Exception as e:
+        return {"error": str(e), "entries": [], "truncated": False}
+
+    entries = []
+    for name in names[:max_entries]:
+        full_path = os.path.join(abs_path, name)
+        is_dir = os.path.isdir(full_path)
+        size = None
+        if not is_dir:
+            try:
+                size = os.path.getsize(full_path)
+            except Exception:
+                size = None
+        entries.append({"name": name, "is_dir": is_dir, "size": size})
+    return {"entries": entries, "truncated": len(names) > max_entries}
+
+
+def read_file_base64(artifact_path, filename, max_bytes=5242880):
+    """Read one artifact file on the endpoint, returned base64-encoded.
+
+    `artifact_path` is the task's stored artifact path (a directory or a single
+    file); `filename` names the entry to read. Resolution happens here because
+    only the endpoint knows whether `artifact_path` is a file or a directory.
+    Results travel back over the Globus Compute data plane (~10MB cap after
+    another serialization pass), so max_bytes must stay well below that.
+    """
+    import base64
+    import os
+
+    if (
+        not filename
+        or filename in (".", "..")
+        or ("/" in filename)
+        or ("\\" in filename)
+    ):
+        return {"error": "Invalid filename"}
+
+    abs_artifact = os.path.expanduser(os.path.expandvars(artifact_path))
+    if os.path.isdir(abs_artifact):
+        abs_path = os.path.join(abs_artifact, filename)
+    elif os.path.isfile(abs_artifact) and os.path.basename(abs_artifact) == filename:
+        abs_path = abs_artifact
+    else:
+        return {"error": f"{filename}: No such file or directory"}
+
+    try:
+        size = os.path.getsize(abs_path)
+        if size > max_bytes:
+            return {
+                "error": f"File is {size} bytes and exceeds the {max_bytes} byte "
+                "download limit"
+            }
+        with open(abs_path, "rb") as file_handle:
+            content = file_handle.read(max_bytes + 1)
+        return {
+            "content_b64": base64.b64encode(content).decode("ascii"),
+            "size": len(content),
+        }
+    except Exception as e:
+        return {"error": str(e)}
+
+
+def stage_base64_file(file_path, content_b64):
+    """Write a base64-encoded payload to file_path on the endpoint.
+
+    Runs as a registered Python function so the payload travels over the
+    Globus Compute data plane instead of a shell command line, which is
+    capped by MAX_ARG_STRLEN (~128KB).
+    """
+    import base64
+    import os
+
+    abs_path = os.path.expanduser(os.path.expandvars(file_path))
+    parent_dir = os.path.dirname(abs_path)
+    if parent_dir:
+        os.makedirs(parent_dir, exist_ok=True)
+    with open(abs_path, "wb") as file_handle:
+        file_handle.write(base64.b64decode(content_b64))
+    return abs_path
+
+
 write_file = _make_shell_function(
     r"""
 set -euo pipefail

@@ -12,6 +12,9 @@ from diamond_backend.app.utils.functions import (
     _make_shell_function,
     fetch_task_status,
     get_task_log,
+    list_directory_entries,
+    read_file_base64,
+    stage_base64_file,
 )
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
 
@@ -119,6 +122,90 @@ def _extract_slurm_batch_job_id(submit_result):
         )
 
     return match.group(1)
+
+
+def run_endpoint_python_function(
+    func,
+    *,
+    endpoint_id,
+    identity_id,
+    kwargs,
+    error_message,
+):
+    """Run a registered Python function on the endpoint and wait for its result.
+
+    Unlike shell functions, kwargs and results travel over the Globus Compute
+    data plane, so payloads are not constrained by the kernel's command-line
+    argument size limit.
+    """
+    globus_compute_client = initialize_globus_compute_client()
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id, endpoint_uuid=endpoint_id
+    )
+    function_id = globus_compute_client.register_function(func)
+
+    try:
+        task_id = globus_compute_wrapped_run(
+            globus_compute_client,
+            endpoint_id=endpoint_id,
+            function_id=function_id,
+            user_endpoint_config=user_endpoint_config,
+            kwargs=kwargs,
+        )
+    except Exception as exc:
+        logger.exception("Failed to submit %s task to Globus Compute", func.__name__)
+        raise TaskSubmissionError(
+            error_message,
+            payload={"details": str(exc)},
+        ) from exc
+
+    try:
+        return _wait_for_compute_result(globus_compute_client, task_id)
+    except TaskSubmissionError as exc:
+        raise TaskSubmissionError(
+            error_message,
+            http_status=exc.http_status,
+            payload=exc.payload,
+        ) from exc
+
+
+def stage_base64_file_on_endpoint(
+    *,
+    endpoint_id,
+    identity_id,
+    file_path,
+    content_b64,
+):
+    """Write a base64 payload to a file on the endpoint before job submission."""
+    return run_endpoint_python_function(
+        stage_base64_file,
+        endpoint_id=endpoint_id,
+        identity_id=identity_id,
+        kwargs={"file_path": file_path, "content_b64": content_b64},
+        error_message="Failed to upload file to endpoint",
+    )
+
+
+def list_endpoint_directory(*, endpoint_id, identity_id, dir_path):
+    """List a directory on the endpoint (e.g. a task's artifact directory)."""
+    return run_endpoint_python_function(
+        list_directory_entries,
+        endpoint_id=endpoint_id,
+        identity_id=identity_id,
+        kwargs={"dir_path": dir_path},
+        error_message="Failed to list directory on endpoint",
+    )
+
+
+def read_endpoint_file_b64(*, endpoint_id, identity_id, artifact_path, filename):
+    """Read one artifact file on the endpoint, returned base64-encoded."""
+    return run_endpoint_python_function(
+        read_file_base64,
+        endpoint_id=endpoint_id,
+        identity_id=identity_id,
+        kwargs={"artifact_path": artifact_path, "filename": filename},
+        error_message="Failed to read file from endpoint",
+    )
 
 
 def submit_batch_script_task(

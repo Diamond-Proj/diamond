@@ -1,0 +1,87 @@
+diamond_resolve_path() {
+  # $1 = raw value, $2 = base dir for relative (non-empty) values.
+  # Trims surrounding whitespace, expands $HOME/$USER/~, and prefixes a
+  # non-empty relative value with the base dir. Empty stays empty.
+  local value="$1" base="$2"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value//\$\{HOME\}/$HOME}"
+  value="${value//\$HOME/$HOME}"
+  value="${value//\$\{USER\}/$USER}"
+  value="${value//\$USER/$USER}"
+  case "$value" in
+    "~") value="$HOME" ;;
+    "~/"*) value="$HOME/${value#\~/}" ;;
+  esac
+  if [[ -n "$value" && "$value" != /* ]]; then
+    value="$base/$value"
+  fi
+  printf '%s' "$value"
+}
+
+raw_out_dir="$(cat <<'DIAMOND_OUT_DIR'
+{{ out_dir | default('', true) }}
+DIAMOND_OUT_DIR
+)"
+resolved_out_dir="$(diamond_resolve_path "$raw_out_dir" "{{ location }}")"
+if [[ -z "$resolved_out_dir" ]]; then
+  resolved_out_dir="{{ location }}/outputs/{{ task_name }}"
+fi
+
+resolved_image_path="{{ image_upload | default('', true) }}"
+if [[ -z "$resolved_image_path" ]]; then
+  raw_image_path="$(cat <<'DIAMOND_IMAGE_PATH'
+{{ image_path | default('', true) }}
+DIAMOND_IMAGE_PATH
+)"
+  resolved_image_path="$(diamond_resolve_path "$raw_image_path" "{{ location }}")"
+fi
+
+if [[ -z "$resolved_image_path" ]]; then
+  echo "No image provided: set Image Path or upload an image" >&2
+  exit 1
+fi
+
+resolved_prompt="$(cat <<'DIAMOND_PROMPT'
+{{ prompt | default('', true) }}
+DIAMOND_PROMPT
+)"
+prompt_quoted="$(printf '%q' "$resolved_prompt")"
+
+image_dir="$(dirname "$resolved_image_path")"
+image_file="$(basename "$resolved_image_path")"
+
+mkdir -p "$resolved_out_dir"
+
+cat << EOF > {{ location }}/{{ task_name }}.submit
+#!/bin/bash
+
+#SBATCH --job-name={{ task_name }}
+#SBATCH --output={{ stdout_path }}
+#SBATCH --error={{ stderr_path }}
+#SBATCH --nodes={{ num_of_nodes }}
+#SBATCH --time={{ time_duration }}
+#SBATCH --partition={{ partition }}
+#SBATCH --account={{ account }}
+#SBATCH --ntasks-per-node=1
+{{ slurm_options }}
+
+apptainer run --nv \
+  -B /projects:/projects \
+  -B /work:/work \
+  -B "$image_dir":/diamond_input \
+  -B "$resolved_out_dir":/diamond_output \
+  "{{ container_path or '/projects/bcrc/hxie6/sam3_ft/sam3lung.sif' }}" \
+  predict \
+    --model "{{ model_path }}" \
+    --image "/diamond_input/$image_file" \
+    --prompt $prompt_quoted \
+    --out-dir /diamond_output
+EOF
+
+sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit
+sbatch_rc=$?
+if [[ $sbatch_rc -eq 0 ]]; then
+  echo "DIAMOND_ARTIFACT_PATH=$resolved_out_dir"
+fi
+exit $sbatch_rc
