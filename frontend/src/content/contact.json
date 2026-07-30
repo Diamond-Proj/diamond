@@ -1,0 +1,30 @@
+{
+  "page": {
+    "title": "Contact us"
+  },
+  "emails": [
+    {
+      "name": "Dr. Zhao Zhang",
+      "email": "zz671@soe.rutgers.edu",
+      "role": "Rutgers University · Electrical & Computer Engineering",
+      "bio": "Dr. Zhang’s research brings high-performance computing and deep learning together across optimization, I/O, systems architecture, and scientific applications. Before joining Rutgers, he led the machine learning group at the Texas Advanced Computing Center. He received his Ph.D. in Computer Science from the University of Chicago and was a postdoctoral researcher at UC Berkeley’s AMPLab."
+    }
+  ],
+  "slack": {
+    "label": "Slack",
+    "joinUrl": "",
+    "status": "Invite link coming soon"
+  },
+  "github": [
+    {
+      "label": "Frontend repository",
+      "repositoryUrl": "https://github.com/Diamond-Proj/diamond-admin-dashboard",
+      "issuesUrl": "https://github.com/Diamond-Proj/diamond-admin-dashboard/issues/new/choose",
+      "pullRequestsUrl": "https://github.com/Diamond-Proj/diamond-admin-dashboard/pulls"
+    }
+  ],
+  "navigation": {
+    "label": "Contact us",
+    "href": "/contact"
+  }
+}
