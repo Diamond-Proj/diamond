@@ -1,0 +1,11 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "${SKIP_PRECOMMIT:-}" = "1" ]; then
+  echo "Skipping pre-commit checks because SKIP_PRECOMMIT=1"
+  exit 0
+fi
+
+echo "Running pre-commit checks..."
+pnpm typecheck
+pnpm test
