@@ -1,0 +1,5 @@
+{
+    "machine": "Delta@NCSA",
+    "container_type": "apptainer",
+    "container_module_command": ""
+}

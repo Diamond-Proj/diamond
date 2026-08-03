@@ -1,0 +1,42 @@
+cat << EOF > {{ location }}/{{ container_name }}.def
+Bootstrap: docker
+From: {{ base_image }}
+
+%post
+    apt-get -y update
+    apt-get -y install apt-utils
+    apt-get -y install python3-pip
+    mkdir -p /app
+    cd /app
+    cat << 'COMMANDS_EOF' > commands.sh
+{{ commands }}
+COMMANDS_EOF
+    chmod +x commands.sh
+
+%environment
+{% if environment %}
+    export {{ environment }}
+{% endif %}
+
+%runscript
+    /bin/bash /app/commands.sh
+EOF
+
+cat << EOF > {{ location }}/{{ container_name }}.submit
+#!/bin/bash
+
+#SBATCH --job-name={{ task_name }}
+#SBATCH --output={{ stdout_path }}
+#SBATCH --error={{ stderr_path }}
+#SBATCH --time={{ time_duration }}
+#SBATCH --partition={{ partition }}
+#SBATCH --account={{ account }}
+#SBATCH --nodes=1
+#SBATCH --ntasks-per-node=1
+#SBATCH --mem=40G
+
+{{ container_module_command }}
+apptainer build {{ location }}/{{ container_name }}.sif {{ location }}/{{ container_name }}.def
+EOF
+
+sbatch {{ reservation }} {{ location }}/{{ container_name }}.submit

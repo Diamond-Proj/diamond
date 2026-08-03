@@ -1,0 +1,50 @@
+name: Backend Health Check
+
+on:
+  schedule:
+    # Run every 15 minutes
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+    inputs:
+      endpoint_url:
+        description: "Custom endpoint URL to check (optional)"
+        required: false
+        type: string
+        default: "https://backend.diamondhpc.ai"
+
+jobs:
+  health-check:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check Backend Health
+        run: |
+          HEALTH_URL="${{ inputs.endpoint_url || 'https://backend.diamondhpc.ai' }}/api/healthcheck"
+          echo "Checking health at: $HEALTH_URL"
+
+          # Make the health check request
+          response=$(curl -s -w "%{http_code}" -o /tmp/health_response.json "$HEALTH_URL" || echo "000")
+          http_code="${response: -3}"
+
+          echo "HTTP Status Code: $http_code"
+
+          if [ "$http_code" = "200" ]; then
+            echo "Health check passed!"
+            cat /tmp/health_response.json
+          else
+            echo "Health check failed with status code: $http_code"
+            if [ -f /tmp/health_response.json ]; then
+              echo "Response:"
+              cat /tmp/health_response.json
+            fi
+            exit 1
+          fi
+
+      - name: Notify Slack on Failure
+        if: failure()
+        uses: slackapi/slack-github-action@v2.1.0
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL }}
+          webhook-type: incoming-webhook
+          payload: |
+            text: "🚨 *Diamond HPC Backend Health Check Failed*\n${{ inputs.endpoint_url || 'https://backend.diamondhpc.ai' }}/api/healthcheck\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
