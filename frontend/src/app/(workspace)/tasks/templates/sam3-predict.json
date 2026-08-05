@@ -1,0 +1,59 @@
+{
+  "id": "sam3-predict",
+  "taskTemplate": "sam3-predict-delta.j2",
+  "name": "SAM3 Image Segmentation",
+  "description": "Run SAM3 (base or finetuned) to segment an image on Delta@NCSA. Upload a single image or point to one already on the cluster.",
+  "category": "Inference",
+  "hiddenFields": ["dataset_id", "task"],
+  "defaults": {
+    "taskName": "sam3-predict",
+    "num_of_nodes": 1,
+    "time_duration": "00:20:00",
+    "slurm_options": "#SBATCH --gpus-per-node=1\n#SBATCH --mem=32G",
+    "prompt": "lung"
+  },
+  "customFields": [
+    {
+      "key": "model_path",
+      "label": "Model",
+      "placeholder": "Select model or enter a finetuned .pt path",
+      "required": true,
+      "optional": [
+        {
+          "label": "SAM3 lung finetuned",
+          "value": "/projects/bcrc/hxie6/sam3_ft/models/sam3_lung_finetuned.pt"
+        },
+        {
+          "label": "SAM3 base (facebook/sam3)",
+          "value": "/projects/bcrc/hxie6/sam3_ft/hf_cache/hub/models--facebook--sam3/snapshots/3c879f39826c281e95690f02c7821c4de09afae7/sam3.pt"
+        }
+      ]
+    },
+    {
+      "key": "prompt",
+      "label": "Prompt",
+      "placeholder": "lung",
+      "required": true
+    },
+    {
+      "key": "image_upload",
+      "label": "Upload Image",
+      "type": "file",
+      "accept": "image/*",
+      "help": "Single image (max 5MB). It will be uploaded to the cluster before the job starts."
+    },
+    {
+      "key": "image_path",
+      "label": "Image Path on Cluster",
+      "placeholder": "uploads/l1.jpg or /work/nvme/bcrc/hxie6/l1.jpg",
+      "requiredUnless": "image_upload",
+      "help": "Optional if an image is uploaded above (the upload wins if both are set). Relative paths resolve under the Diamond working directory."
+    },
+    {
+      "key": "out_dir",
+      "label": "Output Directory",
+      "placeholder": "Defaults to outputs/<task name> in the Diamond working directory",
+      "help": "Leave empty to use outputs/<task name> under the Diamond working directory. Relative paths also resolve there; absolute paths are used as-is."
+    }
+  ]
+}

@@ -1,0 +1,42 @@
+cat << EOF > {{ location }}/{{ task_name }}.submit
+#!/bin/bash
+
+#SBATCH --job-name={{ task_name }}
+#SBATCH --output={{ stdout_path }}
+#SBATCH --error={{ stderr_path }}
+#SBATCH --nodes={{ num_of_nodes }}
+#SBATCH --time={{ time_duration }}
+#SBATCH --partition={{ partition }}
+#SBATCH --account={{ account }}
+#SBATCH --ntasks-per-node=1
+{{ slurm_options }}
+
+{{ container_module_command }}
+
+apptainer exec --nv \
+  --bind {{ model_path }}:/model \
+  {{ container_path }} \
+  bash <<'DIAMOND_TASK_END'
+set -euo pipefail
+
+export PYTHONNOUSERSITE=1
+VLLM_PORT=\$(( 40000 + 10#\${SLURM_JOB_ID: -4} ))
+
+echo "DIAMOND_VLLM_PORT=\$VLLM_PORT"
+echo "DIAMOND_VLLM_NODE=\$(hostname -s)"
+echo "DIAMOND_VLLM_BASE_URL=http://\$(hostname -s):\$VLLM_PORT/v1"
+
+vllm serve /model \
+  --host 0.0.0.0 \
+  --port "\$VLLM_PORT" \
+  --served-model-name "{{ served_model_name }}" \
+  --max-model-len {{ max_model_len }}{% if vllm_extra_args %} \
+  {{ vllm_extra_args }}{% endif %}
+DIAMOND_TASK_END
+EOF
+
+sbatch_output="$(sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit)"
+sbatch_rc=$?
+echo "$sbatch_output"
+
+exit $sbatch_rc

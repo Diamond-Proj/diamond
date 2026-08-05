@@ -1,0 +1,51 @@
+# See https://help.github.com/articles/ignoring-files/ for more about ignoring files.
+
+# dependencies
+/node_modules
+/.pnp
+.pnp.js
+**/__pycache__
+
+# testing
+/coverage
+
+# production
+/build
+
+# backend database
+*.db
+
+# misc
+.DS_Store
+*.pem
+
+# debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+.pnpm-debug.log*
+
+# env files
+.env*
+!.env.example
+
+# typescript
+*.tsbuildinfo
+next-env.d.ts
+
+# Pycharm
+.idea
+
+# egg info
+*.egg-info/
+
+# coverage
+.coverage*
+coverage.xml
+
+# Agents
+.agents/
+.claude/
+AGENTS.md
+CLAUDE.md
+

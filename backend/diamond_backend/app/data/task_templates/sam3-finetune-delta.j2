@@ -1,0 +1,70 @@
+diamond_resolve_path() {
+  # $1 = raw value, $2 = base dir for relative (non-empty) values.
+  # Trims surrounding whitespace, expands $HOME/$USER/~, and prefixes a
+  # non-empty relative value with the base dir. Empty stays empty.
+  local value="$1" base="$2"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value//\$\{HOME\}/$HOME}"
+  value="${value//\$HOME/$HOME}"
+  value="${value//\$\{USER\}/$USER}"
+  value="${value//\$USER/$USER}"
+  case "$value" in
+    "~") value="$HOME" ;;
+    "~/"*) value="$HOME/${value#\~/}" ;;
+  esac
+  if [[ -n "$value" && "$value" != /* ]]; then
+    value="$base/$value"
+  fi
+  printf '%s' "$value"
+}
+
+raw_finetuned_model_path="$(cat <<'DIAMOND_FINETUNED_MODEL_PATH'
+{{ finetuned_model_path }}
+DIAMOND_FINETUNED_MODEL_PATH
+)"
+resolved_finetuned_model_path="$(diamond_resolve_path "$raw_finetuned_model_path" "{{ location }}")"
+if [[ -z "$resolved_finetuned_model_path" ]]; then
+  resolved_finetuned_model_path="{{ location }}/models"
+fi
+resolved_artifact_path="$resolved_finetuned_model_path/{{ finetuned_model_name }}.pt"
+
+resolved_category="$(cat <<'DIAMOND_CATEGORY'
+{{ category | default('', true) }}
+DIAMOND_CATEGORY
+)"
+category_quoted="$(printf '%q' "$resolved_category")"
+
+mkdir -p "$resolved_finetuned_model_path"
+
+cat << EOF > {{ location }}/{{ task_name }}.submit
+#!/bin/bash
+
+#SBATCH --job-name={{ task_name }}
+#SBATCH --output={{ stdout_path }}
+#SBATCH --error={{ stderr_path }}
+#SBATCH --nodes={{ num_of_nodes }}
+#SBATCH --time={{ time_duration }}
+#SBATCH --partition={{ partition }}
+#SBATCH --account={{ account }}
+#SBATCH --ntasks-per-node=1
+{{ slurm_options }}
+
+apptainer run --nv \
+  -B /projects:/projects \
+  -B /work:/work \
+  "{{ container_path or '/projects/bcrc/hxie6/sam3_ft/sam3lung.sif' }}" \
+  finetune \
+    --model "{{ base_model_path }}" \
+    --dataset "{{ dataset_path }}" \
+    --output "$resolved_artifact_path" \
+    --epochs {{ epochs | int(4) }} \
+    --category $category_quoted
+EOF
+
+sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit
+sbatch_rc=$?
+if [[ $sbatch_rc -eq 0 ]]; then
+  echo "DIAMOND_ARTIFACT_PATH=$resolved_artifact_path"
+fi
+exit $sbatch_rc

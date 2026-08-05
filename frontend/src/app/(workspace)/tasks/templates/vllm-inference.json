@@ -1,0 +1,35 @@
+{
+  "id": "vllm-inference",
+  "taskTemplate": "vllm-inference.j2",
+  "name": "Launch vLLM Chat Service",
+  "description": "Launch an OpenAI-compatible vLLM service on a compute node and keep it available for interactive chat.",
+  "category": "Inference",
+  "hiddenFields": ["dataset_id", "task"],
+  "defaults": {
+    "taskName": "vllm-inference",
+    "num_of_nodes": 1,
+    "time_duration": "00:20:00",
+    "slurm_options": "#SBATCH --gpus-per-node=1\n#SBATCH --mem=64G",
+    "served_model_name": "diamond-assistant",
+    "max_model_len": 2048,
+    "vllm_extra_args": ""
+  },
+  "customFields": [
+    {
+      "key": "model_path",
+      "label": "Model Path",
+      "required": true
+    },
+    {
+      "key": "served_model_name",
+      "label": "Served Model Name",
+      "required": true
+    },
+    {
+      "key": "max_model_len",
+      "label": "Max Model Length",
+      "placeholder": "2048",
+      "required": true
+    }
+  ]
+}
