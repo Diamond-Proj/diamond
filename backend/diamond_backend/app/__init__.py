@@ -70,6 +70,14 @@ basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 with app.app_context():
     g_database = Database(app)
 
+    from diamond_backend.app.utils.flow_manager import (
+        check_and_create_flows,
+        check_and_create_functions,
+    )
+
+    check_and_create_flows(app)
+    check_and_create_functions(app)
+
 g_runtime_redis = RuntimeRedis()
 
 
@@ -79,6 +87,7 @@ def register_routes():
     from diamond_backend.app import containers as containers
     from diamond_backend.app import datasets as datasets
     from diamond_backend.app import endpoints as endpoints
+    from diamond_backend.app import flows as flows
     from diamond_backend.app import images as images
     from diamond_backend.app import llm as llm
     from diamond_backend.app import profiles as profiles

@@ -5,6 +5,8 @@ import { Button } from './ui/button';
 import { Loader2, LogIn } from 'lucide-react';
 import { toast } from '@/components/ui/use-toast';
 import { cn } from '@/lib/utils';
+import { fetchDynamicGlobusScopes } from '@/lib/auth/client';
+import { DEFAULT_GLOBUS_SCOPES } from '@/lib/auth/constants';
 
 interface LoginButtonProps {
   className?: string;
@@ -20,21 +22,24 @@ export function LoginButton({ className }: LoginButtonProps) {
       const baseUrl = window.location.origin;
       const clientId = process.env.NEXT_PUBLIC_GLOBUS_CLIENT_ID;
 
-      // Get scopes from environment variable (should include funcx_service scope)
-      const scopes =
-        process.env.NEXT_PUBLIC_GLOBUS_SCOPES ||
-        'openid email profile urn:globus:auth:scope:transfer.api.globus.org:all https://auth.globus.org/scopes/facd7ccc-c5f4-42aa-916b-a0e270e2c2a9/all';
-
       if (!clientId) {
         throw new Error('Globus client ID not configured');
       }
+      const dynamicScopes = await fetchDynamicGlobusScopes();
+      const staticScopes = process.env.NEXT_PUBLIC_GLOBUS_SCOPES
+        ? process.env.NEXT_PUBLIC_GLOBUS_SCOPES.split(' ')
+        : [];
+
+      const allScopes = Array.from(
+        new Set([...DEFAULT_GLOBUS_SCOPES.split(' '), ...staticScopes, ...dynamicScopes])
+      ).join(' ');
 
       const redirectUri = `${baseUrl}/auth/callback`;
       const params = new URLSearchParams({
         client_id: clientId,
         redirect_uri: redirectUri,
         response_type: 'code',
-        scope: scopes,
+        scope: allScopes,
         access_type: 'offline'
       });
 
@@ -82,3 +87,4 @@ export function LoginButton({ className }: LoginButtonProps) {
     </Button>
   );
 }
+

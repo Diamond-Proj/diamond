@@ -101,5 +101,34 @@ def diamond_get_stats():
     return jsonify(stats)
 
 
+@app.route("/api/globus_login_scopes", methods=["GET"])
+def globus_login_scopes():
+    from diamond_backend.app.database.models.flow import Flows
+
+    # Default scopes required for the application
+    default_scopes = [
+        "openid",
+        "profile",
+        "email",
+        "urn:globus:auth:scope:transfer.api.globus.org:all",
+        "urn:globus:auth:scope:auth.globus.org:view_identity_set",
+    ]
+
+    # Dynamically add scopes for all registered flows
+    flow_scopes = []
+    with app.app_context():
+        all_flows = Flows.query.all()
+        for flow in all_flows:
+            # Construct the flow-specific scope pattern
+            # Example: https://auth.globus.org/scopes/FLOW_ID/flow_FLOW_ID_user
+            flow_id_underscores = flow.flow_id.replace("-", "_")
+            flow_scope = f"https://auth.globus.org/scopes/{flow.flow_id}/flow_{flow_id_underscores}_user"
+            flow_scopes.append(flow_scope)
+
+    all_required_scopes = default_scopes + flow_scopes
+    logger.info(f"Returning required Globus login scopes: {all_required_scopes}")
+    return jsonify({"scopes": all_required_scopes})
+
+
 if __name__ == "__main__":
     app.run()

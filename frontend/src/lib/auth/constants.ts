@@ -34,7 +34,7 @@ export const DEFAULT_AUTH_SESSION: AuthSession = {
 export const GLOBUS_AUTHORIZE_URL = 'https://auth.globus.org/v2/oauth2/authorize';
 export const GLOBUS_TOKEN_URL = 'https://auth.globus.org/v2/oauth2/token';
 export const DEFAULT_GLOBUS_SCOPES =
-  'openid email profile urn:globus:auth:scope:transfer.api.globus.org:all https://auth.globus.org/scopes/facd7ccc-c5f4-42aa-916b-a0e270e2c2a9/all';
+  'openid email profile urn:globus:auth:scope:transfer.api.globus.org:all https://auth.globus.org/scopes/facd7ccc-c5f4-42aa-916b-a0e270e2c2a9/all https://auth.globus.org/scopes/eec9b274-0c81-4334-bdc2-54e90e689b9a/all';
 
 export function pathnameMatches(
   pathname: string,
