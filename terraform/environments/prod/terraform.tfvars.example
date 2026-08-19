@@ -1,0 +1,17 @@
+aws_region = "us-east-2"
+
+# Required -- no default on purpose, prod should never silently deploy
+# ":latest". Set these to a specific, already-pushed tag (e.g. a git SHA).
+backend_image  = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-prod-backend:<sha>"
+frontend_image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-prod-frontend:<sha>"
+
+backend_extra_env = {
+  # PORTAL_CLIENT_ID     = ""
+  # PORTAL_CLIENT_SECRET = ""
+  # SECRET_KEY           = ""
+}
+
+frontend_extra_env = {
+  # NEXT_PUBLIC_GLOBUS_CLIENT_ID = ""
+  # GLOBUS_CLIENT_SECRET         = ""
+}

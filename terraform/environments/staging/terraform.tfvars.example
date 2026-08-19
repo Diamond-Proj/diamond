@@ -1,0 +1,15 @@
+aws_region = "us-east-2"
+
+backend_image  = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-staging-backend:<sha>"
+frontend_image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-staging-frontend:<sha>"
+
+backend_extra_env = {
+  # PORTAL_CLIENT_ID     = ""
+  # PORTAL_CLIENT_SECRET = ""
+  # SECRET_KEY           = ""
+}
+
+frontend_extra_env = {
+  # NEXT_PUBLIC_GLOBUS_CLIENT_ID = ""
+  # GLOBUS_CLIENT_SECRET         = ""
+}
