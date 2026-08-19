@@ -11,7 +11,7 @@ import { landingPageContent } from '@/content/landing-page-content';
 export const metadata: Metadata = {
   title: 'Contact us',
   description:
-    'Contact the Diamond HPC team or contribute to the frontend project on GitHub.'
+    'Contact the Diamond HPC team or contribute to the Diamond project on GitHub.'
 };
 
 const focusRing =

@@ -4,10 +4,10 @@
   },
   "emails": [
     {
-      "name": "Dr. Zhao Zhang",
+      "name": "Diamond HPC Team",
       "email": "diamondhpc-team@googlegroups.com",
-      "role": "Rutgers University · Electrical & Computer Engineering",
-      "bio": "Dr. Zhang’s research brings high-performance computing and deep learning together across optimization, I/O, systems architecture, and scientific applications. Before joining Rutgers, he led the machine learning group at the Texas Advanced Computing Center. He received his Ph.D. in Computer Science from the University of Chicago and was a postdoctoral researcher at UC Berkeley’s AMPLab."
+      "role": "Community · Support · Collaboration",
+      "bio": "Contact the Diamond HPC team with questions, feedback, partnership inquiries, or ideas for contributing. We’ll connect you with the right person."
     }
   ],
   "slack": {
@@ -17,7 +17,7 @@
   },
   "github": [
     {
-      "label": "Diamond monorepo",
+      "label": "Diamond project repository",
       "repositoryUrl": "https://github.com/Diamond-Proj/diamond",
       "issuesUrl": "https://github.com/Diamond-Proj/diamond/issues/new/choose",
       "pullRequestsUrl": "https://github.com/Diamond-Proj/diamond/pulls"
