@@ -21,7 +21,50 @@ Find details in [Frontend README](frontend/README.md) and [Backend README](backe
 
 ## Launch with Docker Compose
 
-...
 
+Both services are defined in `docker-compose.yml` at the repo root. The backend
+requires a populated `backend/.env` (copy from `backend/.env.example` and fill
+in your Globus credentials and database URI). The frontend reads
+`frontend/.env` for Globus client config; copy from `frontend/.env.example`.
+
+**1. Prepare env files**
+
+```bash
+cp backend/.env.example backend/.env   # fill in credentials
+cp frontend/.env.example frontend/.env # fill in Globus client ID/secret
+```
+
+**2. Build the images**
+
+The frontend image bakes the backend URL at build time, so the build step is
+required before the first launch and after any change to `FLASK_URL`.
+
+```bash
+docker compose build
+```
+
+**3. Launch**
+
+Default (SQLite database):
+
+```bash
+# Set SQLALCHEMY_DATABASE_URI=sqlite:////data/diamond.db in backend/.env
+docker compose up
+```
+
+With a local PostgreSQL container:
+
+```bash
+# Set SQLALCHEMY_DATABASE_URI=postgresql://diamond:diamond@db:5432/diamond in backend/.env
+docker compose --profile postgres up
+```
+
+To inspect the SQLite database interactively:
+
+```bash
+docker compose --profile sqlite up -d
+docker compose --profile sqlite exec sqlite sh
+# inside: sqlite3 diamond.db
+```
 
 
