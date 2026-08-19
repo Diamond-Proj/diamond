@@ -9,7 +9,7 @@ import {
 } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
+import { LifeBuoy, Menu, PanelLeftClose, PanelLeftOpen, X } from 'lucide-react';
 
 import {
   ApiErrorMonitor,
@@ -25,6 +25,7 @@ import { Toaster } from '@/components/ui/toaster';
 import { AuthSessionProvider } from '@/lib/auth/session-context';
 import { useAuthSession } from '@/lib/auth/useAuthSession';
 import type { AuthSession } from '@/lib/auth/types';
+import contact from '@/content/contact.json';
 
 const routeTitles = [
   { match: (path: string) => path === '/dashboard', title: 'Dashboard' },
@@ -36,7 +37,8 @@ const routeTitles = [
     match: (path: string) => path.startsWith('/endpoints'),
     title: 'Endpoints'
   },
-  { match: (path: string) => path.startsWith('/profile'), title: 'Profile' }
+  { match: (path: string) => path.startsWith('/profile'), title: 'Profile' },
+  { match: (path: string) => path.startsWith('/contact'), title: 'Contact us' }
 ];
 
 const DESKTOP_NAV_COLLAPSED_STORAGE_KEY = 'diamond:desktop-nav-collapsed';
@@ -201,6 +203,16 @@ export function AppShell({
 
               <div className="flex items-center gap-3">
                 <ApiErrorMonitorTrigger />
+                <Link
+                  href={contact.navigation.href}
+                  className="inline-flex h-9 items-center justify-center gap-2 rounded-lg border border-slate-300/70 px-2.5 text-sm font-medium text-slate-700 transition-colors hover:bg-slate-100 focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:outline-none dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-800"
+                  aria-label={contact.navigation.label}
+                >
+                  <LifeBuoy className="h-4 w-4" aria-hidden="true" />
+                  <span className="hidden xl:inline">
+                    {contact.navigation.label}
+                  </span>
+                </Link>
                 <DocsButton />
                 <ThemeToggle />
                 <AuthStatus session={session} isLoading={isLoading} />

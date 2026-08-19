@@ -6,6 +6,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Logo } from '@/components/icons';
 import ThemeToggle from '@/components/layout/theme-toggle';
 import type { LandingPageContent } from '@/content/landing-page-content';
+import contact from '@/content/contact.json';
 
 function HeaderActionLink({
   href,
@@ -40,9 +41,11 @@ function PrimaryHeaderCta({ href, label }: { href: string; label: string }) {
 }
 
 export function LandingHeader({
-  header
+  header,
+  showContact = true
 }: {
   header: LandingPageContent['header'];
+  showContact?: boolean;
 }) {
   const [isVisible, setIsVisible] = useState(true);
   const lastScrollY = useRef(0);
@@ -79,7 +82,11 @@ export function LandingHeader({
     >
       <div className="container py-4">
         <div className="mx-auto flex max-w-[1240px] items-center justify-between gap-4 rounded-xl border border-white/70 bg-white/64 px-4 py-3 shadow-[0_24px_80px_rgba(15,23,42,0.08)] backdrop-blur-2xl md:px-5 dark:border-slate-800/80 dark:bg-slate-950/72 dark:shadow-[0_28px_90px_rgba(2,6,23,0.4)]">
-          <div className="flex min-w-0 items-center gap-3">
+          <Link
+            href="/"
+            aria-label="Diamond HPC home"
+            className="focus-visible:ring-primary/45 flex min-w-0 items-center gap-3 rounded-lg focus-visible:ring-2 focus-visible:ring-offset-2 focus-visible:outline-none dark:focus-visible:ring-offset-slate-950"
+          >
             <div className="rounded-lg border border-white/80 bg-white/78 p-1.5 shadow-[0_8px_24px_rgba(15,23,42,0.08)] dark:border-slate-800/80 dark:bg-slate-900/86 dark:shadow-none">
               <Logo width={42} height={42} className="shrink-0" />
             </div>
@@ -91,9 +98,15 @@ export function LandingHeader({
                 {header.label}
               </p>
             </div>
-          </div>
+          </Link>
 
           <div className="flex items-center gap-2">
+            {showContact ? (
+              <HeaderActionLink
+                href={contact.navigation.href}
+                label={contact.navigation.label}
+              />
+            ) : null}
             <HeaderActionLink
               href={header.docsHref}
               label={header.docsLabel}

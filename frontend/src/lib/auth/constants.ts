@@ -10,8 +10,14 @@ export const LOGIN_ROUTE = '/login';
 export const LOGOUT_ROUTE = '/logout';
 export const SIGN_IN_ROUTE = '/sign-in';
 export const AUTH_CALLBACK_ROUTE = '/auth/callback';
+export const CONTACT_ROUTE = '/contact';
 
-export const PUBLIC_AUTH_ROUTES = [HOME_ROUTE, SIGN_IN_ROUTE, AUTH_CALLBACK_ROUTE] as const;
+export const PUBLIC_AUTH_ROUTES = [
+  HOME_ROUTE,
+  SIGN_IN_ROUTE,
+  AUTH_CALLBACK_ROUTE,
+  CONTACT_ROUTE
+] as const;
 export const AUTH_EXEMPT_API_ROUTES = ['/api/auth', '/api/healthcheck'] as const;
 export const CLIENT_AUTH_REDIRECT_EXEMPT_ROUTES = [
   ...PUBLIC_AUTH_ROUTES,
