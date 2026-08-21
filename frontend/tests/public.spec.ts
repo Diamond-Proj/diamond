@@ -1,5 +1,32 @@
 import { test, expect } from '@playwright/test';
 
+test.describe('Landing page', () => {
+  test('acknowledges NSF support and lists all award numbers', async ({
+    page
+  }) => {
+    await page.goto('/');
+
+    await expect(
+      page.getByText(/supported by the National Science Foundation/i)
+    ).toBeVisible();
+
+    for (const awardNumber of ['2401245', '2311767', '2311768', '2311769']) {
+      const awardLink = page.getByRole('link', {
+        name: `View NSF Award ${awardNumber}`
+      });
+
+      await expect(awardLink).toBeVisible();
+      await expect(awardLink).toHaveAttribute(
+        'href',
+        `https://www.nsf.gov/awardsearch/showAward?AWD_ID=${awardNumber}`
+      );
+      await expect(
+        awardLink.getByRole('img', { name: `NSF Award ${awardNumber}` })
+      ).toHaveAttribute('src', /shields\.io/);
+    }
+  });
+});
+
 test.describe('Sign-in page', () => {
   test('renders welcome content and Globus sign-in affordance', async ({
     page
