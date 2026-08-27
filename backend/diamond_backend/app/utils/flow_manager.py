@@ -28,6 +28,7 @@ FLOW_TEMPLATES = {
                     "Parameters": {
                         "endpoint_id.$": "$.endpoint_id",
                         "user_endpoint_config.$": "$.user_endpoint_config",
+                        "user_runtime.$": "$.user_runtime",
                         "tasks": [
                             {
                                 "function_id.$": "$.function_id",
@@ -52,15 +53,22 @@ FLOW_TEMPLATES = {
                     "properties": {
                         "account": {"type": "string"},
                         "partition": {"type": "string"},
-                        "worker_init": {"type": "string"},
                     },
                 },
+                "user_runtime": {
+                    "type": "object",
+                    "properties": {
+                        "globus_compute_sdk_version": {"type": "string"},
+                        "python": {"type": "object"},
+                    }
+                }
             },
             "required": [
                 "endpoint_id",
                 "function_id",
                 "function_kwargs",
                 "user_endpoint_config",
+                "user_runtime",
             ],
         },
         "title_prefix": "Run Function Flow",
@@ -208,7 +216,6 @@ sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit
         ["bash", submit_file],
         capture_output=True,
         text=True,
-        check=True,
     )
     return result.stdout
 

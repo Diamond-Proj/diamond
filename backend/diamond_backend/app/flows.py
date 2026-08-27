@@ -137,7 +137,16 @@ def submit_flow(request_json, request_cookies, function_id, fn_params):
                     "user_endpoint_config": {
                         "account": fn_params.get("account"),
                         "partition": fn_params.get("partition"),
-                        "worker_init": 'export PATH="$HOME/.local/bin:$PATH"; if ! command -v uv &> /dev/null; then curl -LsSf https://astral.sh/uv/install.sh | sh; fi; VENV="$HOME/.globus_compute/.venvs/py3139-delta-4150"; uv venv --allow-existing "$VENV" --python 3.13.9; source "$VENV/bin/activate"; uv pip install globus-compute-endpoint==4.15.0',
+                    },
+                    "user_runtime": {
+                        "globus_compute_sdk_version": fn_params.get("globus_compute_sdk_version", "4.15.0"),
+                        "python": {
+                            "version": "3.13.9",
+                            "version_tuple": [3, 13, 9],
+                            "version_info": [3, 13, 9, "final", 0],
+                            "implementation": "CPython",
+                            "compiler": "GCC",
+                        },
                     },
                 },
                 label=task_name,
