@@ -2,7 +2,6 @@
 
 ```
 terraform/
-  bootstrap/        one-time: S3 state bucket + DynamoDB lock table
   modules/          reusable building blocks (network, registry, database, cluster, db_admin, app)
   environments/
     prod/           own VPC, own RDS, own ECS cluster/ALB
@@ -14,15 +13,11 @@ terraform/
     dev-down.sh     tear a branch environment down and drop its DB
 ```
 
+State is local to each environment's directory (`terraform.tfstate`, gitignored) -- there's no shared remote backend, so `apply`/`destroy` must be run from the same machine/checkout that holds that environment's state file.
+
 ## One-time setup
 
-```bash
-cd bootstrap
-terraform init
-terraform apply -var="state_bucket_name=<something-globally-unique>"
-```
-
-Then apply `prod`, `staging`, and `dev` each once (see their `terraform.tfvars.example`):
+Apply `prod`, `staging`, and `dev` each once (see their `terraform.tfvars.example`):
 
 ```bash
 cd environments/dev

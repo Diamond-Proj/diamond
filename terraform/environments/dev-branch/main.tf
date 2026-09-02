@@ -6,11 +6,11 @@ locals {
 }
 
 data "terraform_remote_state" "dev" {
-  backend = "s3"
+  backend = "local"
   config = {
-    bucket = "diamond-terraform-state"
-    key    = "diamond/dev/terraform.tfstate"
-    region = "us-east-2"
+    # Relative to the directory Terraform is run from (see dev-up.sh, which
+    # runs via `terraform -chdir=environments/dev-branch`).
+    path = "../dev/terraform.tfstate"
   }
 }
 
