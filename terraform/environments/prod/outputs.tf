@@ -13,3 +13,11 @@ output "frontend_ecr_repository_url" {
 output "rds_endpoint" {
   value = module.database.address
 }
+
+output "backend_image" {
+  value = module.app.backend_image
+}
+
+output "frontend_image" {
+  value = module.app.frontend_image
+}

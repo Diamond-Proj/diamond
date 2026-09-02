@@ -1,0 +1,85 @@
+# Deploy to prod: triggered by pushing a plain release tag (vMAJOR.MINOR.PATCH,
+# e.g. v1.4.2). Pre-releases like v1.4.2-rc1 or v1.4.2-alpha match the
+# workflow's tag glob (GitHub Actions tag filters don't support the +/{}
+# quantifiers needed to exclude them there) but are rejected by the
+# validate-tag job below, so only real releases ever reach prod.
+#
+# Unlike staging, every prod deploy rebuilds and pushes both images tagged
+# with the release version -- a release should have a complete, traceable
+# set of images under its version tag, not a partial rebuild.
+name: Deploy prod
+
+on:
+  push:
+    tags:
+      - 'v*.*.*'
+
+env:
+  AWS_REGION: us-east-2
+  TF_DIR: terraform/environments/prod
+
+jobs:
+  validate-tag:
+    runs-on: ubuntu-latest
+    outputs:
+      valid: ${{ steps.check.outputs.valid }}
+    steps:
+      - id: check
+        run: |
+          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "valid=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "valid=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::Skipping deploy -- '$GITHUB_REF_NAME' is not a plain vMAJOR.MINOR.PATCH release (pre-releases are not deployed to prod)."
+          fi
+
+  deploy:
+    needs: validate-tag
+    if: needs.validate-tag.outputs.valid == 'true'
+    runs-on: ubuntu-latest
+    environment: prod
+    concurrency:
+      group: deploy-prod
+      cancel-in-progress: false
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Resolve ECR repository URLs
+        id: repos
+        run: |
+          echo "backend=$(aws ecr describe-repositories --repository-names diamond-prod-backend --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "frontend=$(aws ecr describe-repositories --repository-names diamond-prod-frontend --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push backend image
+        run: |
+          docker build -t "${{ steps.repos.outputs.backend }}:$GITHUB_REF_NAME" backend
+          docker push "${{ steps.repos.outputs.backend }}:$GITHUB_REF_NAME"
+
+      - name: Build & push frontend image
+        run: |
+          docker build -t "${{ steps.repos.outputs.frontend }}:$GITHUB_REF_NAME" frontend
+          docker push "${{ steps.repos.outputs.frontend }}:$GITHUB_REF_NAME"
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var "backend_image=${{ steps.repos.outputs.backend }}:${{ github.ref_name }}" \
+            -var "frontend_image=${{ steps.repos.outputs.frontend }}:${{ github.ref_name }}"

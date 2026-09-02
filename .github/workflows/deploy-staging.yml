@@ -1,0 +1,104 @@
+# Continuous deploy to staging: every push to main builds whichever of
+# backend/frontend changed, pushes it to ECR tagged with the commit SHA, and
+# applies terraform/environments/staging. A container that didn't change
+# keeps whatever image is already applied (read back from terraform output)
+# rather than being rebuilt or redeployed.
+name: Deploy staging
+
+on:
+  push:
+    branches: [main]
+
+concurrency:
+  group: deploy-staging
+  cancel-in-progress: false
+
+env:
+  AWS_REGION: us-east-2
+  TF_DIR: terraform/environments/staging
+
+jobs:
+  changes:
+    runs-on: ubuntu-latest
+    outputs:
+      backend: ${{ steps.filter.outputs.backend }}
+      frontend: ${{ steps.filter.outputs.frontend }}
+      infra: ${{ steps.filter.outputs.infra }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dorny/paths-filter@v3
+        id: filter
+        with:
+          filters: |
+            backend:
+              - 'backend/**'
+            frontend:
+              - 'frontend/**'
+            infra:
+              - 'terraform/**'
+
+  deploy:
+    needs: changes
+    if: needs.changes.outputs.backend == 'true' || needs.changes.outputs.frontend == 'true' || needs.changes.outputs.infra == 'true'
+    runs-on: ubuntu-latest
+    environment: staging
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: aws-actions/amazon-ecr-login@v2
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      # Fallback image refs for whichever container this run doesn't rebuild
+      # -- keeps that service's task definition, and thus its running image,
+      # unchanged when `terraform apply` runs below.
+      - name: Read currently-deployed images
+        id: current
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          echo "backend_image=$(terraform output -raw backend_image)" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=$(terraform output -raw frontend_image)" >> "$GITHUB_OUTPUT"
+
+      - name: Resolve ECR repository URLs
+        id: repos
+        run: |
+          echo "backend=$(aws ecr describe-repositories --repository-names diamond-staging-backend --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+          echo "frontend=$(aws ecr describe-repositories --repository-names diamond-staging-frontend --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push backend image
+        if: needs.changes.outputs.backend == 'true'
+        id: backend_build
+        run: |
+          TAG="sha-${GITHUB_SHA::12}"
+          docker build -t "${{ steps.repos.outputs.backend }}:$TAG" backend
+          docker push "${{ steps.repos.outputs.backend }}:$TAG"
+          echo "image=${{ steps.repos.outputs.backend }}:$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build & push frontend image
+        if: needs.changes.outputs.frontend == 'true'
+        id: frontend_build
+        run: |
+          TAG="sha-${GITHUB_SHA::12}"
+          docker build -t "${{ steps.repos.outputs.frontend }}:$TAG" frontend
+          docker push "${{ steps.repos.outputs.frontend }}:$TAG"
+          echo "image=${{ steps.repos.outputs.frontend }}:$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          terraform apply -input=false -auto-approve \
+            -var "backend_image=${{ steps.backend_build.outputs.image || steps.current.outputs.backend_image }}" \
+            -var "frontend_image=${{ steps.frontend_build.outputs.image || steps.current.outputs.frontend_image }}"
