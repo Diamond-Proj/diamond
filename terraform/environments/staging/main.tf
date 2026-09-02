@@ -14,16 +14,9 @@ module "registry" {
 }
 
 module "database" {
-  source             = "../../modules/database"
-  name               = local.name
-  vpc_id             = module.network.vpc_id
-  private_subnet_ids = module.network.private_subnet_ids
-  instance_class     = var.db_instance_class
-
-  multi_az                = false
-  backup_retention_period = 3
-  deletion_protection     = false
-  skip_final_snapshot     = true
+  source = "../../modules/database"
+  name   = local.name
+  vpc_id = module.network.vpc_id
 }
 
 module "cluster" {

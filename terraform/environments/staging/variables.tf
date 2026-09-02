@@ -26,11 +26,6 @@ variable "frontend_desired_count" {
   default = 1
 }
 
-variable "db_instance_class" {
-  type    = string
-  default = "db.t4g.micro"
-}
-
 variable "backend_extra_env" {
   type    = map(string)
   default = {}

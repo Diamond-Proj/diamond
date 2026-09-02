@@ -5,14 +5,23 @@ terraform/
   bootstrap/        one-time: S3 state bucket (locking is S3-native, no DynamoDB)
   modules/          reusable building blocks (network, registry, database, cluster, db_admin, app)
   environments/
-    prod/           own VPC, own RDS, own ECS cluster/ALB
+    prod/           own VPC, own ECS cluster/ALB, points at a manually-created RDS instance
     staging/        same as prod, smaller/cheaper
-    dev/            own VPC/RDS/ECS cluster (shared by all branch envs) + a persistent "main" deploy
+    dev/            own VPC/ECS cluster (shared by all branch envs) + a persistent "main" deploy, points at a manually-created RDS instance
     dev-branch/     ephemeral -- one Terraform workspace per developer branch, plugged into dev's shared infra
   scripts/
     dev-up.sh       build+push your branch's images, create its DB, deploy it
     dev-down.sh     tear a branch environment down and drop its DB
 ```
+
+**RDS is not provisioned by Terraform.** Each environment's `database` module ([`modules/database`](modules/database/main.tf)) is lookup-only -- it expects the RDS instance, its security group, and two Secrets Manager secrets to already exist, created and managed by hand, and just wires their IDs/ARNs into the app and db_admin modules. Before `terraform apply` will succeed for `dev`/`staging`/`prod`, create and tag these to match that environment's `name` (`diamond-dev`, `diamond-staging`, or `diamond-prod`):
+
+- an RDS Postgres instance with identifier `<name>-postgres`
+- a security group named `<name>-rds` in the environment's VPC (no ingress rules needed -- Terraform adds its own)
+- a Secrets Manager secret `<name>-db-master-credentials`: JSON with keys `username`, `password`, `host`, `port`, `database` (used by `db_admin` to create/drop per-branch databases)
+- a Secrets Manager secret `<name>-database-url`: a plain string, the full `postgresql://` connection string for that environment's own app database
+
+Naming has to match exactly, or the `data` lookups in `modules/database` will fail to find them.
 
 State lives in the shared S3 bucket created by `bootstrap/`, one object per environment (workspaces get their own key automatically). Locking uses S3's native conditional-write locking (`use_lockfile`, requires Terraform >= 1.11) -- no DynamoDB table needed. This lets any machine (including CI) safely run `apply`/`destroy` against a given environment.
 

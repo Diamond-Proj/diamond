@@ -14,17 +14,9 @@ module "registry" {
 }
 
 module "database" {
-  source             = "../../modules/database"
-  name               = local.name
-  vpc_id             = module.network.vpc_id
-  private_subnet_ids = module.network.private_subnet_ids
-  instance_class     = var.db_instance_class
-
-  # Prod gets real durability settings, unlike the dev/branch defaults.
-  multi_az                = true
-  backup_retention_period = 7
-  deletion_protection     = true
-  skip_final_snapshot     = false
+  source = "../../modules/database"
+  name   = local.name
+  vpc_id = module.network.vpc_id
 }
 
 module "cluster" {
