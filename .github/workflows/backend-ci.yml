@@ -1,4 +1,4 @@
-name: CI
+name: Backend CI
 
 on:
   push:
@@ -6,6 +6,10 @@ on:
   pull_request:
     branches: [ main ]
   workflow_dispatch:
+
+defaults:
+  run:
+    working-directory: backend
 
 jobs:
   test:
@@ -37,22 +41,3 @@ jobs:
         token: ${{ secrets.CODECOV_TOKEN }}
         files: ./coverage.xml
         fail_ci_if_error: false
-
-  build:
-    runs-on: ubuntu-latest
-
-    steps:
-    - uses: actions/checkout@v4
-    - name: Extract start command from railway.json
-      id: railway-config
-      run: echo "start_cmd=$(jq -r '.deploy.startCommand' railway.json)" >> $GITHUB_OUTPUT
-
-    - name: Build with Nixpacks # (same as railway build process)
-      uses: iloveitaly/github-action-nixpacks@main
-      with:
-        push: false
-        tags: |
-          ghcr.io/diamond-proj/diamond-admin-backend:${{ github.sha }}
-          ghcr.io/diamond-proj/diamond-admin-backend:latest
-        env:
-          NIXPACKS_START_CMD="${{ steps.railway-config.outputs.start_cmd }}"
