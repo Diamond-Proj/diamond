@@ -7,8 +7,20 @@ test.describe('Landing page', () => {
     await page.goto('/');
 
     await expect(
-      page.getByText(/supported by the National Science Foundation/i)
+      page.getByText(
+        'This material is based upon work supported by the National Science Foundation under Award Nos. 2401245, 2311767, 2311768, and 2311769.'
+      )
     ).toBeVisible();
+    const nsfWebsiteLink = page.getByRole('link', {
+      name: 'Visit the U.S. National Science Foundation website'
+    });
+
+    await expect(nsfWebsiteLink).toBeVisible();
+    await expect(nsfWebsiteLink).toHaveAttribute('href', 'https://www.nsf.gov');
+    await expect(nsfWebsiteLink.locator('img')).toHaveAttribute(
+      'src',
+      '/nsf-logo.svg'
+    );
 
     for (const awardNumber of ['2401245', '2311767', '2311768', '2311769']) {
       const awardLink = page.getByRole('link', {
@@ -24,6 +36,21 @@ test.describe('Landing page', () => {
         awardLink.getByRole('img', { name: `NSF Award ${awardNumber}` })
       ).toHaveAttribute('src', /shields\.io/);
     }
+  });
+
+  test('keeps the NSF acknowledgement off the contact page', async ({
+    page
+  }) => {
+    await page.goto('/contact');
+
+    await expect(
+      page.getByText(/supported by the National Science Foundation/i)
+    ).toHaveCount(0);
+    await expect(
+      page.getByRole('link', {
+        name: 'Visit the U.S. National Science Foundation website'
+      })
+    ).toHaveCount(0);
   });
 });
 

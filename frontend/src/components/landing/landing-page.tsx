@@ -326,7 +326,7 @@ export function LandingPage() {
         </section>
       </div>
 
-      <LandingFooter />
+      <LandingFooter showFunding />
     </main>
   );
 }
