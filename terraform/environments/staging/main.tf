@@ -14,9 +14,28 @@ module "registry" {
 }
 
 module "database" {
-  source = "../../modules/database"
-  name   = local.name
-  vpc_id = module.network.vpc_id
+  source  = "../../modules/database"
+  name    = local.name
+  db_name = "staging"
+}
+
+# The shared RDS instance/bastion (terraform/bootstrap-data) live in their
+# own VPC, peered to this one. Route traffic to it through that peering
+# connection -- the reverse routes (this VPC's CIDR, from the data VPC) are
+# created on bootstrap-data's side.
+data "terraform_remote_state" "shared_data" {
+  backend = "s3"
+  config = {
+    bucket = "diamond-hpc-terraform-state"
+    key    = "diamond/bootstrap-data/terraform.tfstate"
+    region = "us-east-2"
+  }
+}
+
+resource "aws_route" "to_shared_data" {
+  route_table_id            = module.network.private_route_table_id
+  destination_cidr_block    = data.terraform_remote_state.shared_data.outputs.vpc_cidr_block
+  vpc_peering_connection_id = data.terraform_remote_state.shared_data.outputs.peering_connection_ids["staging"]
 }
 
 module "cluster" {

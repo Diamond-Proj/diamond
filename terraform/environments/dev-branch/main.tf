@@ -8,7 +8,7 @@ locals {
 data "terraform_remote_state" "dev" {
   backend = "s3"
   config = {
-    bucket = "diamond-terraform-state"
+    bucket = "diamond-hpc-terraform-state"
     key    = "diamond/dev/terraform.tfstate"
     region = "us-east-2"
   }

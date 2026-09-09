@@ -14,7 +14,7 @@ terraform {
   }
 
   backend "s3" {
-    bucket       = "diamond-terraform-state" # must match bootstrap's state_bucket_name
+    bucket       = "diamond-hpc-terraform-state" # must match bootstrap's state_bucket_name
     key          = "diamond/dev-branch/terraform.tfstate"
     region       = "us-east-2"
     use_lockfile = true

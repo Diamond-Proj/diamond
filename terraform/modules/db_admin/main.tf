@@ -40,37 +40,12 @@ resource "aws_cloudwatch_log_group" "db_admin" {
   retention_in_days = 14
 }
 
-data "aws_iam_policy_document" "ecs_assume" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
-    }
-  }
-}
-
-resource "aws_iam_role" "execution" {
-  name               = "${var.name}-db-admin-execution"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "execution_managed" {
-  role       = aws_iam_role.execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-data "aws_iam_policy_document" "read_master_secret" {
-  statement {
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.master_credentials_secret_arn]
-  }
-}
-
-resource "aws_iam_role_policy" "execution_read_secret" {
-  name   = "${var.name}-db-admin-read-secret"
-  role   = aws_iam_role.execution.id
-  policy = data.aws_iam_policy_document.read_master_secret.json
+# Shared across every environment, created once by terraform/bootstrap-iam
+# (this project's applies deliberately run under a principal with no IAM
+# permissions). Already grants secretsmanager:GetSecretValue on every
+# "diamond-*" secret, which covers var.master_credentials_secret_arn.
+data "aws_iam_role" "execution" {
+  name = "diamond-ecs-execution"
 }
 
 resource "aws_ecs_task_definition" "db_admin" {
@@ -79,7 +54,7 @@ resource "aws_ecs_task_definition" "db_admin" {
   network_mode             = "awsvpc"
   cpu                      = 256
   memory                   = 512
-  execution_role_arn       = aws_iam_role.execution.arn
+  execution_role_arn       = data.aws_iam_role.execution.arn
 
   container_definitions = jsonencode([
     {

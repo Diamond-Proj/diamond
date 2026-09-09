@@ -28,7 +28,7 @@ variable "aws_region" {
 
 variable "state_bucket_name" {
   type    = string
-  default = "diamond-terraform-state"
+  default = "diamond-hpc-terraform-state"
 }
 
 provider "aws" {

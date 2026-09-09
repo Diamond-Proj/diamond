@@ -1,5 +1,5 @@
 output "address" {
-  value = data.aws_db_instance.postgres.address
+  value = data.aws_db_instance.shared.address
 }
 
 output "security_group_id" {

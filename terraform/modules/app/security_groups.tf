@@ -46,7 +46,7 @@ resource "aws_security_group" "frontend" {
 
 resource "aws_security_group" "backend" {
   name        = "${var.name}-backend"
-  description = "Backend ECS tasks - allows inbound from this instance's frontend service only"
+  description = "Backend ECS tasks - allows inbound from this environments frontend service only"
   vpc_id      = var.vpc_id
 
   ingress {

@@ -3,25 +3,22 @@
 ```
 terraform/
   bootstrap/        one-time: S3 state bucket (locking is S3-native, no DynamoDB)
+  bootstrap-data/    one-time: shared RDS instance + SSH bastion, VPC-peered to dev/staging/prod
+  bootstrap-iam/     one-time: shared ECS execution/task roles, applied by whoever actually has IAM permissions
   modules/          reusable building blocks (network, registry, database, cluster, db_admin, app)
   environments/
-    prod/           own VPC, own ECS cluster/ALB, points at a manually-created RDS instance
+    prod/           own VPC, own ECS cluster/ALB, uses its own database on the shared RDS instance
     staging/        same as prod, smaller/cheaper
-    dev/            own VPC/ECS cluster (shared by all branch envs) + a persistent "main" deploy, points at a manually-created RDS instance
+    dev/            own VPC/ECS cluster (shared by all branch envs) + a persistent "main" deploy, uses its own database on the shared RDS instance
     dev-branch/     ephemeral -- one Terraform workspace per developer branch, plugged into dev's shared infra
   scripts/
     dev-up.sh       build+push your branch's images, create its DB, deploy it
     dev-down.sh     tear a branch environment down and drop its DB
 ```
 
-**RDS is not provisioned by Terraform.** Each environment's `database` module ([`modules/database`](modules/database/main.tf)) is lookup-only -- it expects the RDS instance, its security group, and two Secrets Manager secrets to already exist, created and managed by hand, and just wires their IDs/ARNs into the app and db_admin modules. Before `terraform apply` will succeed for `dev`/`staging`/`prod`, create and tag these to match that environment's `name` (`diamond-dev`, `diamond-staging`, or `diamond-prod`):
+**RDS is provisioned once, by `bootstrap-data/`, and shared.** A single Postgres instance holds separate `dev`/`staging`/`prod` databases (plus one per active branch environment, same as before). Each environment's `database` module ([`modules/database`](modules/database/main.tf)) just looks up that shared instance, its security group, and its master-credentials secret -- all named `diamond-shared-*` -- plus its own environment-specific connection-string secret (`<name>-database-url`, one per environment). The instance itself lives in a dedicated VPC (`bootstrap-data`), peered to each environment's VPC so their ECS tasks can reach it; an SSH bastion in that same VPC gives admin access to the instance directly.
 
-- an RDS Postgres instance with identifier `<name>-postgres`
-- a security group named `<name>-rds` in the environment's VPC (no ingress rules needed -- Terraform adds its own)
-- a Secrets Manager secret `<name>-db-master-credentials`: JSON with keys `username`, `password`, `host`, `port`, `database` (used by `db_admin` to create/drop per-branch databases)
-- a Secrets Manager secret `<name>-database-url`: a plain string, the full `postgresql://` connection string for that environment's own app database
-
-Naming has to match exactly, or the `data` lookups in `modules/database` will fail to find them.
+**IAM roles are provisioned once too, by `bootstrap-iam/`, and shared.** The day-to-day AWS principal running `terraform apply` for dev/staging/prod (and CI) deliberately has no IAM permissions -- `iam:CreateRole` is denied by design, not a gap to fix. Since every environment's ECS execution/task role needs identical permissions (the AWS-managed `AmazonECSTaskExecutionRolePolicy`, plus read access to any `diamond-*` Secrets Manager secret), one shared `diamond-ecs-execution`/`diamond-ecs-task` role pair, created once by someone who *does* have IAM permissions, covers every environment and the `db_admin` one-off task. [`modules/app`](modules/app/ecs.tf) and [`modules/db_admin`](modules/db_admin/main.tf) look these up by name via `data "aws_iam_role"` rather than creating their own.
 
 State lives in the shared S3 bucket created by `bootstrap/`, one object per environment (workspaces get their own key automatically). Locking uses S3's native conditional-write locking (`use_lockfile`, requires Terraform >= 1.11) -- no DynamoDB table needed. This lets any machine (including CI) safely run `apply`/`destroy` against a given environment.
 
@@ -33,13 +30,33 @@ terraform init
 terraform apply -var="state_bucket_name=<something-globally-unique>"
 ```
 
-Then apply `prod`, `staging`, and `dev` each once (see their `terraform.tfvars.example`):
+Have someone who actually has IAM permissions apply the shared ECS roles -- this only needs to happen once, ever, regardless of how many environments get added later:
+
+```bash
+cd bootstrap-iam
+terraform init
+terraform apply
+```
+
+Apply `prod`, `staging`, and `dev` each once (see their `terraform.tfvars.example`) -- this creates their VPCs, which `bootstrap-data` needs to peer against. This will fail on `module.app`/`module.db_admin` if `bootstrap-iam` hasn't been applied yet (they look up its roles by name), so do that first.
 
 ```bash
 cd environments/dev
 terraform init
 terraform apply
 ```
+
+Then set up the shared database and bastion:
+
+```bash
+cd bootstrap-data
+terraform init
+terraform apply -var="master_password=<something>"
+```
+
+...and **re-apply `prod`/`staging`/`dev`** so each one picks up its `aws_route` to the new peering connection (this only resolves once `bootstrap-data` has been applied at least once, so it's a required second pass, not optional).
+
+Finally, SSH to the bastion (`terraform -chdir=bootstrap-data output bastion_public_ip`) and, using the master credentials in Secrets Manager (`diamond-shared-db-master-credentials`), run `CREATE DATABASE dev;` / `CREATE DATABASE staging;` / `CREATE DATABASE prod;`, then restore each environment's data into its database however you're migrating it in. Once traffic is confirmed flowing through the new instance, delete whatever RDS instance/bastion you'd created manually before -- `bootstrap-data` fully replaces them.
 
 `dev` must exist before any branch environment can be created -- `dev-branch` reads its VPC/RDS/cluster/ECR details via `terraform_remote_state`.
 
@@ -64,7 +81,8 @@ This destroys that branch's ECS services/ALB and drops its database, freeing the
 
 - **Isolation**: branch environments share the dev VPC and RDS *instance*, but each gets its own datbase and its own ECS services/ALB. This keeps spin-up to ~1-2 minutes (no VPC/RDS provisioning) at the cost of sharing one Postgres engine across everyone's branches.
 - **Branch DB credentials**: branch databases are accessed with the shared instance's master user, scoped only by database name -- not a dedicated role per branch. Fine for throwaway test data; revisit before this holds anything sensitive.
-- **prod/staging remain fully isolated** (own VPC, own RDS instance) -- only `dev`/`dev-branch` share infrastructure.
+- **prod/staging/dev now share one RDS instance too** (see `bootstrap-data/`), each with its own database but *all three connection strings currently use the instance's own master (`postgres`) user* -- there's no narrower per-environment role. That means a leaked staging or dev secret is a leaked prod credential. Fine to start, but worth revisiting (e.g. per-database roles created by hand, or via the `hashicorp/postgresql` Terraform provider) before this holds anything sensitive in prod.
+- **Network isolation is now peering, not separate VPCs**: prod/staging/dev each still have their own VPC, but all three are peered to the shared data VPC so their ECS tasks can reach the one RDS instance. A compromised backend task in any one environment has network-level line of sight to the RDS security group that fronts all three databases (though not to the other environments' VPCs directly -- peering is data-VPC-hub-and-spoke, not mesh).
 
 ## CI/CD
 
@@ -78,4 +96,4 @@ Three workflows in `../.github/workflows/`, one trigger per environment:
 
 The persistent "main" deploy in `dev` itself (as opposed to per-branch environments) isn't wired to any of these -- it's still applied by hand as covered under one-time setup above.
 
-**Required repo secrets**: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for an IAM user with permission to push to ECR and manage the VPC/RDS/ECS/ALB/Secrets Manager resources each environment's `terraform apply` touches. Consider scoping `prod`'s deploy job behind a GitHub Environment protection rule (required reviewers) given it runs unattended off a tag push.
+**Required repo secrets**: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for an IAM user with permission to push to ECR and manage the VPC/RDS/ECS/ALB/Secrets Manager resources each environment's `terraform apply` touches. It does **not** need any `iam:*` permissions -- see `bootstrap-iam/` above, the ECS roles it uses are looked up, not created. Consider scoping `prod`'s deploy job behind a GitHub Environment protection rule (required reviewers) given it runs unattended off a tag push.

@@ -10,7 +10,7 @@ terraform {
 
   backend "s3" {
     bucket       = "diamond-hpc-terraform-state" # must match bootstrap's state_bucket_name
-    key          = "diamond/dev/terraform.tfstate"
+    key          = "diamond/bootstrap-data/terraform.tfstate"
     region       = "us-east-2"
     use_lockfile = true
     encrypt      = true
@@ -23,7 +23,7 @@ provider "aws" {
   default_tags {
     tags = {
       Project     = "diamond"
-      Environment = "dev"
+      Environment = "shared-data"
       ManagedBy   = "terraform"
     }
   }

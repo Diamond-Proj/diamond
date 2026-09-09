@@ -27,44 +27,17 @@ resource "aws_cloudwatch_log_group" "frontend" {
 
 # --- IAM ---
 
-data "aws_iam_policy_document" "ecs_assume" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
-    }
-  }
+# Both roles are created once, shared across every environment, by
+# terraform/bootstrap-iam -- this project's applies deliberately run under a
+# principal with no IAM permissions. diamond-ecs-execution already grants
+# secretsmanager:GetSecretValue on every "diamond-*" secret (which covers
+# var.db_url_secret_arn), so no per-environment policy is needed here.
+data "aws_iam_role" "execution" {
+  name = "diamond-ecs-execution"
 }
 
-resource "aws_iam_role" "execution" {
-  name               = "${var.name}-ecs-execution"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
-}
-
-resource "aws_iam_role_policy_attachment" "execution_managed" {
-  role       = aws_iam_role.execution.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-# The execution role also needs to read the DB secret to inject it as an
-# environment variable at task startup.
-data "aws_iam_policy_document" "read_db_secret" {
-  statement {
-    actions   = ["secretsmanager:GetSecretValue"]
-    resources = [var.db_url_secret_arn]
-  }
-}
-
-resource "aws_iam_role_policy" "execution_read_secret" {
-  name   = "${var.name}-read-db-secret"
-  role   = aws_iam_role.execution.id
-  policy = data.aws_iam_policy_document.read_db_secret.json
-}
-
-resource "aws_iam_role" "task" {
-  name               = "${var.name}-ecs-task"
-  assume_role_policy = data.aws_iam_policy_document.ecs_assume.json
+data "aws_iam_role" "task" {
+  name = "diamond-ecs-task"
 }
 
 # --- Backend service ---
@@ -75,8 +48,8 @@ resource "aws_ecs_task_definition" "backend" {
   network_mode             = "awsvpc"
   cpu                      = var.backend_cpu
   memory                   = var.backend_memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  execution_role_arn       = data.aws_iam_role.execution.arn
+  task_role_arn            = data.aws_iam_role.task.arn
 
   container_definitions = jsonencode([
     {
@@ -131,8 +104,8 @@ resource "aws_ecs_task_definition" "frontend" {
   network_mode             = "awsvpc"
   cpu                      = var.frontend_cpu
   memory                   = var.frontend_memory
-  execution_role_arn       = aws_iam_role.execution.arn
-  task_role_arn            = aws_iam_role.task.arn
+  execution_role_arn       = data.aws_iam_role.execution.arn
+  task_role_arn            = data.aws_iam_role.task.arn
 
   container_definitions = jsonencode([
     {
