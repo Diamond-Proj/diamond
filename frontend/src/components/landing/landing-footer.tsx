@@ -5,7 +5,11 @@ import { Logo } from '@/components/icons';
 import contact from '@/content/contact.json';
 import { landingPageContent } from '@/content/landing-page-content';
 
-export function LandingFooter() {
+type LandingFooterProps = {
+  showFunding?: boolean;
+};
+
+export function LandingFooter({ showFunding = false }: LandingFooterProps) {
   const { funding } = landingPageContent;
 
   return (
@@ -47,36 +51,56 @@ export function LandingFooter() {
           </p>
         </div>
 
-        <div className="mt-6 flex flex-col items-center gap-3 border-t border-slate-200/70 pt-5 lg:flex-row lg:justify-between dark:border-slate-800/70">
-          <p className="text-center text-xs leading-5 text-slate-400 lg:text-left dark:text-slate-500">
-            {funding.acknowledgement}
-          </p>
+        {showFunding ? (
+          <div className="mt-6 flex flex-col items-center gap-4 border-t border-slate-200/70 pt-5 lg:flex-row lg:justify-between dark:border-slate-800/70">
+            <div className="flex max-w-2xl items-center gap-3">
+              <Link
+                href="https://www.nsf.gov"
+                target="_blank"
+                rel="noopener noreferrer"
+                aria-label="Visit the U.S. National Science Foundation website"
+                className="shrink-0 rounded-full transition-transform duration-200 hover:scale-105 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0e79b2]"
+              >
+                <Image
+                  src="/nsf-logo.svg"
+                  alt=""
+                  width={44}
+                  height={44}
+                  unoptimized
+                />
+              </Link>
+              <p className="text-left text-xs leading-5 text-slate-400 dark:text-slate-500">
+                {funding.acknowledgement}
+              </p>
+            </div>
 
-          <ul
-            aria-label="NSF awards"
-            className="flex flex-wrap items-center justify-center gap-2 lg:justify-end"
-          >
-            {funding.awards.map((award) => (
-              <li key={award.number} className="leading-none">
-                <Link
-                  href={award.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  aria-label={`View NSF Award ${award.number}`}
-                  className="inline-flex rounded-sm opacity-80 transition-[opacity,transform] duration-200 hover:-translate-y-px hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0e79b2]"
-                >
-                  <Image
-                    src={award.badgeSrc}
-                    alt={`NSF Award ${award.number}`}
-                    width={104}
-                    height={20}
-                    unoptimized
-                  />
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </div>
+            <ul
+              aria-label="NSF award detail links"
+              className="flex flex-wrap items-center justify-center gap-2 lg:justify-end"
+            >
+              {funding.awards.map((award) => (
+                <li key={award.number} className="leading-none">
+                  <Link
+                    href={award.href}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`View NSF Award ${award.number}`}
+                    className="inline-flex rounded-sm opacity-80 transition-[opacity,transform] duration-200 hover:-translate-y-px hover:opacity-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0e79b2]"
+                  >
+                    <Image
+                      src={award.badgeSrc}
+                      alt={`NSF Award ${award.number}`}
+                      width={104}
+                      height={20}
+                      className="h-5 w-auto"
+                      unoptimized
+                    />
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ) : null}
       </div>
     </footer>
   );
