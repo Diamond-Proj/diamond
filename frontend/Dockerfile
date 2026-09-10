@@ -4,8 +4,8 @@
 #   -t diamond_frontend:0.1.0 .
 # Docker run command : docker run --env-file .env -p 3000:3000 diamond_frontend:0.1.0
 
-FROM node:24-alpine AS base
-RUN corepack enable && corepack prepare pnpm@10.33.0 --activate
+FROM node:24.21.0-alpine AS base
+RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
 
 FROM base AS deps
 WORKDIR /app
