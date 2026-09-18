@@ -148,7 +148,7 @@ def test_render_task_template_script():
     assert "/scratch/demo-sft-model" in script
     assert "DIAMOND_ARTIFACT_PATH=$resolved_artifact_path" in script
     assert "cat << EOF" in script
-    assert "export MASTER_PORT=\\$(( 50000 + \\${SLURM_JOB_ID: -4} ))" in script
+    assert "export MASTER_PORT=\\$(( 50000 + 10#\\${SLURM_JOB_ID: -4} ))" in script
 
 
 def test_render_container_build_template_script():
@@ -206,7 +206,7 @@ def test_render_task_template_script_survives_shellfunction_formatting():
     )
     escaped_script = _escape_shell_braces(script)
     formatted = escaped_script.format()
-    assert "export MASTER_PORT=\\$(( 50000 + \\${SLURM_JOB_ID: -4} ))" in formatted
+    assert "export MASTER_PORT=\\$(( 50000 + 10#\\${SLURM_JOB_ID: -4} ))" in formatted
 
 
 def test_render_task_template_script_rejects_invalid_name():
@@ -291,7 +291,7 @@ def test_render_vllm_template_script():
         },
     )
     assert "vllm-demo.submit" in script
-    assert "--bind /work/model/path:/model" in script
+    assert '--bind "/work/model/path":/model' in script
     assert "/work/images/vllm.sif" in script
     assert "VLLM_PORT=\\$(( 40000 + 10#\\${SLURM_JOB_ID: -4} ))" in script
     assert '--served-model-name "diamond-assistant"' in script
@@ -972,3 +972,4 @@ def test_sam3_finetune_relative_output_dir_resolves_under_diamond_dir():
     assert result.returncode == 0, result.stderr
     expected = os.path.join(tmp, "diamond", "models", "run1", "sam3_lung_finetuned.pt")
     assert f"DIAMOND_ARTIFACT_PATH={expected}\n" in result.stdout
+    
