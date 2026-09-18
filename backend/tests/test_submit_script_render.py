@@ -972,4 +972,3 @@ def test_sam3_finetune_relative_output_dir_resolves_under_diamond_dir():
     assert result.returncode == 0, result.stderr
     expected = os.path.join(tmp, "diamond", "models", "run1", "sam3_lung_finetuned.pt")
     assert f"DIAMOND_ARTIFACT_PATH={expected}\n" in result.stdout
-    
