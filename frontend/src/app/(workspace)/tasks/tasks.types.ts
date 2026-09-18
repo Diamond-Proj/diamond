@@ -11,13 +11,6 @@ export interface TaskSubmissionData {
   time_duration: string;
   dataset_id?: string;
   slurm_options?: string;
-  input_path?: string;
-  input_content?: string;
-  output_path?: string;
-  model?: string;
-  engine?: 'vllm' | 'ollama' | '';
-  batch_size?: number;
-  hf_token?: string;
 }
 
 export interface TemplateCustomField {
@@ -124,7 +117,6 @@ export interface TaskTemplate {
   name: string;
   description: string;
   category: string;
-  submissionEndpoint?: '/api/submit_task' | '/api/launch_llmflux';
   taskTemplate?: string;
   hiddenFields?: string[];
   customFields?: TemplateCustomField[];
