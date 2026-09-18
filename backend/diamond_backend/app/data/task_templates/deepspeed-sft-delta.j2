@@ -1,3 +1,5 @@
+resolved_container_path="{{ container_path | default('', true) }}"
+
 resolved_finetuned_model_path="$(cat <<'DIAMOND_FINETUNED_MODEL_PATH'
 {{ finetuned_model_path }}
 DIAMOND_FINETUNED_MODEL_PATH
@@ -25,7 +27,7 @@ apptainer exec --nv \
   --bind {{ model_path }}:/model \
   --bind {{ dataset_path }}:/app/DeepSpeedExamples/applications/DeepSpeed-Chat/data \
   --bind $resolved_finetuned_model_path:/scratch \
-  /work/nvme/bcrc/hxie6/deepspeed_chat.sif \
+  "$resolved_container_path" \
   bash <<'DIAMOND_TASK_END'
 set -euo pipefail
 
@@ -42,7 +44,10 @@ mkdir -p "\$TORCH_EXTENSIONS_DIR"
 mkdir -p /scratch/{{ finetuned_model_name }}
 
 export MASTER_ADDR=127.0.0.1
-export MASTER_PORT=\$(( 50000 + \${SLURM_JOB_ID: -4} ))
+# 10# forces base-10: a job id ending in e.g. 0891 would otherwise be parsed as
+# octal, which errors out ("value too great for base") or silently yields the
+# wrong port (0123 -> 83).
+export MASTER_PORT=\$(( 50000 + 10#\${SLURM_JOB_ID: -4} ))
 echo "Using MASTER_ADDR=\$MASTER_ADDR MASTER_PORT=\$MASTER_PORT"
 echo "output directory: $resolved_artifact_path"
 if compgen -G "/model/tokenizer*" > /dev/null; then

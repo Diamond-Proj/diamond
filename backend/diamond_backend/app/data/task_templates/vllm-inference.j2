@@ -1,3 +1,5 @@
+resolved_container_path="{{ container_path | default('', true) }}"
+
 cat << EOF > {{ location }}/{{ task_name }}.submit
 #!/bin/bash
 
@@ -14,8 +16,8 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 {{ container_module_command }}
 
 apptainer exec --nv \
-  --bind {{ model_path }}:/model \
-  {{ container_path }} \
+  --bind "{{ model_path }}":/model \
+  "$resolved_container_path" \
   bash <<'DIAMOND_TASK_END'
 set -euo pipefail
 
