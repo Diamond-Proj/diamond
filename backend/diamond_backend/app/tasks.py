@@ -711,7 +711,7 @@ def diamond_endpoint_submit_job():
             task_command=task_command,
             slurm_options=slurm_options,
         )
-    logger.info(f"Submit task script: {submit_task_script}")
+    logger.debug("Submit task script: %s", submit_task_script)
     try:
         submission = submit_batch_script_task(
             endpoint_id=endpoint_id,
