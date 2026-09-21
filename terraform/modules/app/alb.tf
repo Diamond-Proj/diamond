@@ -22,13 +22,54 @@ resource "aws_lb_target_group" "frontend" {
   }
 }
 
-# HTTP only. Add an ACM cert + 443 listener (and redirect 80 -> 443) once
-# this instance has a real domain name -- straightforward for prod/staging,
-# skippable for throwaway branch environments.
 resource "aws_lb_listener" "http" {
   load_balancer_arn = aws_lb.main.arn
   port              = 80
   protocol          = "HTTP"
+
+  default_action {
+    type             = var.domain_name != null ? "redirect" : "forward"
+    target_group_arn = var.domain_name != null ? null : aws_lb_target_group.frontend.arn
+
+    dynamic "redirect" {
+      for_each = var.domain_name != null ? [1] : []
+      content {
+        port        = "443"
+        protocol    = "HTTPS"
+        status_code = "HTTP_301"
+      }
+    }
+  }
+}
+
+# Only created when var.domain_name is set (skippable for throwaway branch
+# environments, which stay HTTP-only on their raw ALB DNS name). This
+# project's domains aren't in Route 53, so validation is manual -- apply
+# once to get the acm_validation_record output, create that CNAME wherever
+# DNS actually lives, then apply again once it's propagated (the
+# aws_acm_certificate_validation resource just polls ACM until it sees it).
+resource "aws_acm_certificate" "frontend" {
+  count             = var.domain_name != null ? 1 : 0
+  domain_name       = var.domain_name
+  validation_method = "DNS"
+
+  lifecycle {
+    create_before_destroy = true
+  }
+}
+
+resource "aws_acm_certificate_validation" "frontend" {
+  count           = var.domain_name != null ? 1 : 0
+  certificate_arn = aws_acm_certificate.frontend[0].arn
+}
+
+resource "aws_lb_listener" "https" {
+  count             = var.domain_name != null ? 1 : 0
+  load_balancer_arn = aws_lb.main.arn
+  port              = 443
+  protocol          = "HTTPS"
+  ssl_policy        = "ELBSecurityPolicy-TLS13-1-2-2021-06"
+  certificate_arn   = aws_acm_certificate_validation.frontend[0].certificate_arn
 
   default_action {
     type             = "forward"

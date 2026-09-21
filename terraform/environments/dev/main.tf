@@ -76,10 +76,13 @@ module "app" {
 
   rds_security_group_id = module.database.security_group_id
   db_url_secret_arn     = module.database.app_db_url_secret_arn
+  db_url                = var.db_url
 
   backend_image  = coalesce(var.backend_image, "${module.registry.backend_repository_url}:latest")
   frontend_image = coalesce(var.frontend_image, "${module.registry.frontend_repository_url}:latest")
 
   backend_extra_env  = var.backend_extra_env
   frontend_extra_env = var.frontend_extra_env
+
+  domain_name = var.domain_name
 }

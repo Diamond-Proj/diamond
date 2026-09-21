@@ -44,8 +44,15 @@ variable "rds_security_group_id" {
 }
 
 variable "db_url_secret_arn" {
-  description = "Secrets Manager ARN holding the full postgres connection string this instance's backend should use"
+  description = "Secrets Manager ARN holding the full postgres connection string this instance's backend should use. Ignored if var.db_url is set."
   type        = string
+}
+
+variable "db_url" {
+  description = "TEST/experimental: the full postgres connection string, passed in directly (e.g. from a GitHub Actions secret via TF_VAR_db_url) instead of read from Secrets Manager at container startup. When set, this is injected as a plain ECS environment value rather than via `secrets`/valueFrom, so the execution role no longer needs secretsmanager:GetSecretValue for it -- but the value then lives in the task definition (visible via ecs:DescribeTaskDefinition) and in Terraform state, not just in Secrets Manager. Leave null to keep using db_url_secret_arn."
+  type        = string
+  default     = null
+  sensitive   = true
 }
 
 variable "backend_image" {
@@ -104,4 +111,10 @@ variable "backend_extra_env" {
 variable "frontend_extra_env" {
   type    = map(string)
   default = {}
+}
+
+variable "domain_name" {
+  description = "Custom domain for this instance's frontend (e.g. dev.diamondhpc.ai). When set, adds an ACM cert + HTTPS listener and redirects HTTP to HTTPS. DNS validation is manual since this project's domains aren't in Route 53 -- see the acm_validation_record output. Leave null to stay HTTP-only on the raw ALB DNS name (fine for throwaway branch environments)."
+  type        = string
+  default     = null
 }

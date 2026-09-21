@@ -28,19 +28,35 @@ resource "aws_cloudwatch_log_group" "frontend" {
 # --- IAM ---
 
 # Both roles are created once, shared across every environment, by
-# terraform/bootstrap-iam -- this project's applies deliberately run under a
-# principal with no IAM permissions. diamond-ecs-execution already grants
-# secretsmanager:GetSecretValue on every "diamond-*" secret (which covers
-# var.db_url_secret_arn), so no per-environment policy is needed here.
+# terraform/bootstrap-iam. Names must stay exactly "ecsTaskExecutionRole"/
+# "ecsTaskRole" -- the deploying user's own IAM policy scopes GetRole/
+# PassRole to "role/ecsTask*", so anything else will 403. That role already
+# grants secretsmanager:GetSecretValue on every "diamond-*" secret (which
+# covers var.db_url_secret_arn), so no per-environment policy is needed here.
 data "aws_iam_role" "execution" {
-  name = "diamond-ecs-execution"
+  name = "ecsTaskExecutionRole"
 }
 
 data "aws_iam_role" "task" {
-  name = "diamond-ecs-task"
+  name = "ecsTaskRole"
 }
 
 # --- Backend service ---
+
+locals {
+  # TEST/experimental: when var.db_url is set, inject it as a plain
+  # environment value (no Secrets Manager read at container startup) rather
+  # than via `secrets`/valueFrom. See variables.tf for the tradeoffs.
+  backend_environment = merge({
+    FLASK_ENV = "production"
+    }, var.backend_extra_env, var.db_url != null ? {
+    SQLALCHEMY_DATABASE_URI = var.db_url
+  } : {})
+
+  backend_secrets = var.db_url == null ? [
+    { name = "SQLALCHEMY_DATABASE_URI", valueFrom = var.db_url_secret_arn }
+  ] : []
+}
 
 resource "aws_ecs_task_definition" "backend" {
   family                   = "${var.name}-backend"
@@ -60,13 +76,9 @@ resource "aws_ecs_task_definition" "backend" {
         { containerPort = var.backend_container_port, protocol = "tcp" }
       ]
       environment = [
-        for k, v in merge({
-          FLASK_ENV = "production"
-        }, var.backend_extra_env) : { name = k, value = v }
+        for k, v in local.backend_environment : { name = k, value = v }
       ]
-      secrets = [
-        { name = "SQLALCHEMY_DATABASE_URI", valueFrom = var.db_url_secret_arn }
-      ]
+      secrets = local.backend_secrets
       logConfiguration = {
         logDriver = "awslogs"
         options = {

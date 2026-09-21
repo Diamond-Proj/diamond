@@ -24,7 +24,20 @@ variable "backend_extra_env" {
   default = {}
 }
 
+variable "db_url" {
+  description = "TEST/experimental: pass the full postgres connection string directly (e.g. via TF_VAR_db_url) instead of reading it from Secrets Manager. See modules/app's variable of the same name for the tradeoffs. Leave unset for the normal path."
+  type        = string
+  default     = null
+  sensitive   = true
+}
+
 variable "frontend_extra_env" {
   type    = map(string)
   default = {}
+}
+
+variable "domain_name" {
+  description = "Custom domain for the persistent dev deploy's frontend (e.g. dev.diamondhpc.ai). See modules/app's variable of the same name. Leave null to stay HTTP-only."
+  type        = string
+  default     = null
 }

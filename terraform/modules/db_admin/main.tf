@@ -40,12 +40,13 @@ resource "aws_cloudwatch_log_group" "db_admin" {
   retention_in_days = 14
 }
 
-# Shared across every environment, created once by terraform/bootstrap-iam
-# (this project's applies deliberately run under a principal with no IAM
-# permissions). Already grants secretsmanager:GetSecretValue on every
+# Shared across every environment, created once by terraform/bootstrap-iam.
+# Name must stay exactly "ecsTaskExecutionRole" -- the deploying user's own
+# IAM policy scopes GetRole/PassRole to "role/ecsTask*", so anything else
+# will 403. Already grants secretsmanager:GetSecretValue on every
 # "diamond-*" secret, which covers var.master_credentials_secret_arn.
 data "aws_iam_role" "execution" {
-  name = "diamond-ecs-execution"
+  name = "ecsTaskExecutionRole"
 }
 
 resource "aws_ecs_task_definition" "db_admin" {

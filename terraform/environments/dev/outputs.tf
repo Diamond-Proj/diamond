@@ -2,6 +2,16 @@ output "alb_dns_name" {
   value = "http://${module.app.alb_dns_name}"
 }
 
+output "alb_hostname" {
+  description = "Bare ALB hostname (no scheme) -- this is the CNAME target for a custom domain."
+  value       = module.app.alb_dns_name
+}
+
+output "acm_validation_record" {
+  description = "DNS record to create by hand so ACM can validate var.domain_name's cert. Null until domain_name is set."
+  value       = module.app.acm_validation_record
+}
+
 output "vpc_id" {
   value = module.network.vpc_id
 }
