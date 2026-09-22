@@ -27,13 +27,24 @@ resource "aws_lb_listener" "http" {
   port              = 80
   protocol          = "HTTP"
 
-  default_action {
-    type             = var.domain_name != null ? "redirect" : "forward"
-    target_group_arn = var.domain_name != null ? null : aws_lb_target_group.frontend.arn
+  # Two separate dynamic variants rather than one block with a conditional
+  # target_group_arn -- the AWS provider rejects target_group_arn being
+  # present at all (even set to null) alongside a redirect block, so the
+  # attribute must be structurally absent, not just null, for the redirect
+  # case.
+  dynamic "default_action" {
+    for_each = var.domain_name != null ? [] : [1]
+    content {
+      type             = "forward"
+      target_group_arn = aws_lb_target_group.frontend.arn
+    }
+  }
 
-    dynamic "redirect" {
-      for_each = var.domain_name != null ? [1] : []
-      content {
+  dynamic "default_action" {
+    for_each = var.domain_name != null ? [1] : []
+    content {
+      type = "redirect"
+      redirect {
         port        = "443"
         protocol    = "HTTPS"
         status_code = "HTTP_301"

@@ -37,7 +37,7 @@ variable "frontend_extra_env" {
 }
 
 variable "domain_name" {
-  description = "Custom domain for the persistent dev deploy's frontend (e.g. dev.diamondhpc.ai). See modules/app's variable of the same name. Leave null to stay HTTP-only."
+  description = "Custom domain for the persistent dev deploy's frontend. See modules/app's variable of the same name. Defaulted (not left null) so a plain `terraform apply` without -var can't accidentally destroy the ACM cert/HTTPS listener by reverting this to null."
   type        = string
-  default     = null
+  default     = "dev.diamondhpc.ai"
 }
