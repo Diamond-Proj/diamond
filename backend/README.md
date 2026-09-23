@@ -69,6 +69,30 @@ Diamond Admin Backend is an admin Flask server integrating SQLite for database m
    - Development: `http://localhost:5328`
    - The port can be configured via `FLASK_RUN_PORT` in `.env`
 
+## Database Migrations
+
+Schema changes are managed with [Alembic](https://alembic.sqlalchemy.org/) via
+[Flask-Migrate](https://flask-migrate.readthedocs.io/). Migration scripts live in `migrations/versions/`.
+
+```bash
+# Apply all pending migrations
+uv run flask --app diamond_backend.run:app db upgrade
+
+# After changing a model in diamond_backend/app/database/models/, generate a migration
+uv run flask --app diamond_backend.run:app db migrate -m "describe the change"
+# Review the generated file in migrations/versions/ before committing
+
+# Roll back the most recent migration
+uv run flask --app diamond_backend.run:app db downgrade
+```
+
+**Existing databases:** if a database's tables were created before migrations were added,
+mark it as up to date with the initial schema instead of running `upgrade`:
+
+```bash
+uv run flask --app diamond_backend.run:app db stamp 97c3d7c7b8d2
+```
+
 ## Development Commands
 
 ```bash
