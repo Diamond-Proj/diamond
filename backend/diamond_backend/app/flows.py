@@ -136,13 +136,15 @@ def submit_flow(
                         "partition": fn_params.get("partition"),
                     },
                     "user_runtime": {
-                        "globus_compute_sdk_version": fn_params.get("globus_compute_sdk_version", "4.15.0"),
+                        "globus_compute_sdk_version": fn_params.get(
+                            "globus_compute_sdk_version", GLOBUS_COMPUTE_SDK_VERSION
+                        ),
                         "python": {
-                            "version": "3.13.9",
-                            "version_tuple": [3, 13, 9],
-                            "version_info": [3, 13, 9, "final", 0],
-                            "implementation": "CPython",
-                            "compiler": "GCC",
+                            "version": platform.python_version(),
+                            "version_tuple": list(sys.version_info[:3]),
+                            "version_info": list(sys.version_info),
+                            "implementation": platform.python_implementation(),
+                            "compiler": platform.python_compiler(),
                         },
                     },
                 },
