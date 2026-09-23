@@ -59,5 +59,8 @@ python_functions = ["test_*"]
 [tool.setuptools]
 include-package-data = true
 
+[tool.setuptools.packages.find]
+include = ["diamond_backend*"]
+
 [tool.setuptools.package-data]
 diamond_backend = ["app/data/config/*json", "app/data/template/*json"]
