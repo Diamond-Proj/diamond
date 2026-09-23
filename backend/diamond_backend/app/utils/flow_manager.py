@@ -170,47 +170,14 @@ def get_startup_function_client():
 
 # FUNCTION DEFINITIONS
 def submit_slurm_job(**params):
+    import os
     import subprocess
     from pathlib import Path
 
-    from jinja2 import Template
+    script = params["submit_task_script"]
 
-    submit_task_j2 = """
-cat << EOF > {{ location }}/{{ task_name }}.submit
-#!/bin/bash
-
-#SBATCH --job-name={{ task_name }}
-#SBATCH --output={{ stdout_path }}
-#SBATCH --error={{ stderr_path }}
-#SBATCH --nodes={{ num_of_nodes }}
-#SBATCH --time={{ time_duration }}
-#SBATCH --partition={{ partition }}
-#SBATCH --account={{ account }}
-#SBATCH --ntasks-per-node=1
-{%- if slurm_options %}
-{{ slurm_options }}
-{%- endif %}
-
-export DIAMOND_DATASET_PATH={{ dataset_system_path }}
-if [[ -z "{{ dataset_system_path }}" ]]; then
-echo "No dataset specified"
-mount_string=""
-else
-mount_string="--bind {{ dataset_system_path }}"
-fi
-
-{{ container_module_command }}
-srun --cpu-bind=none apptainer exec \$mount_string --nv {{ container }} {{ task_command }}
-echo "EOF" >> {{ stdout_path }}
-echo "EOF" >> {{ stderr_path }}
-EOF
-
-sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit
-"""
-    template = Template(submit_task_j2)
-    script = template.render(**params)
-
-    submit_file = Path(params["location"]) / f"{params['task_name']}.sh"
+    location = os.path.expanduser(os.path.expandvars(params["location"]))
+    submit_file = Path(location) / f"{params['task_name']}.sh"
     submit_file.write_text(script)
     result = subprocess.run(
         ["bash", submit_file],

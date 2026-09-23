@@ -61,3 +61,17 @@ class RequestMalformed(DiamondResponseError):
         self.reason = (
             f"Request Malformed. Missing critical information: {malformed_reason}"
         )
+
+
+class Unauthorized(DiamondResponseError):
+    """Request is missing or has invalid authentication."""
+
+    code = "UNAUTHORIZED"
+    http_status_code = HTTPStatus.UNAUTHORIZED
+
+
+class InternalError(DiamondResponseError):
+    """An unexpected internal error occurred while handling the request."""
+
+    code = "INTERNAL_ERROR"
+    http_status_code = HTTPStatus.INTERNAL_SERVER_ERROR

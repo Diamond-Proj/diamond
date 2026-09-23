@@ -12,6 +12,7 @@ from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import app, g_database, g_runtime_redis
 from diamond_backend.app.database.models.function import Functions
+from diamond_backend.app.errors import DiamondResponseError
 from diamond_backend.app.flows import get_flow_result, submit_flow
 from diamond_backend.app.task_runtime import (
     TaskSubmissionError,
@@ -96,6 +97,7 @@ def _resolve_artifact_mimetype(filename):
 
 
 ARTIFACT_PATH_MARKER_PATTERN = re.compile(r"^DIAMOND_ARTIFACT_PATH=(.+)$", re.MULTILINE)
+SBATCH_JOB_ID_PATTERN = re.compile(r"Submitted batch job (\d+)")
 VLLM_TASK_LOG_PREFIX = "vllm_task|"
 VLLM_READY_STATES = {"PENDING", "RUNNING", "COMPLETING"}
 VLLM_OPTIONAL_CHAT_FIELDS = (
@@ -734,7 +736,11 @@ def diamond_endpoint_submit_job():
         )
     logger.info(f"Submit task script: {submit_task_script}")
 
-    function_id = Functions.query.filter_by(name="submit_slurm_job").first().function_id
+    submit_slurm_job_fn = Functions.query.filter_by(name="submit_slurm_job").first()
+    if not submit_slurm_job_fn:
+        logger.error("submit_slurm_job function not found in database.")
+        return jsonify({"error": "submit_slurm_job function not initialized"}), 500
+    function_id = submit_slurm_job_fn.function_id
     fn_params = {
         **task_define,
         "task_name": task_name,
@@ -754,9 +760,15 @@ def diamond_endpoint_submit_job():
         "dataset_path": dataset_path,
         "task_command": task_command,
         "slurm_options": slurm_options,
+        "submit_task_script": submit_task_script,
     }
     try:
-        result = submit_flow(request.json, request.cookies, function_id, fn_params)
+        result, status_code = submit_flow(
+            request.json, request.cookies, function_id, fn_params
+        )
+        if status_code != 200:
+            return result, status_code
+
         if result.json.get("required_scopes") is not None:
             return jsonify(
                 {
@@ -764,7 +776,14 @@ def diamond_endpoint_submit_job():
                     "required_scopes": result.json["required_scopes"],
                 }
             ), 403
+
         flow_run_id = result.json.get("flow_run_id")
+        if not flow_run_id:
+            logger.error("submit_flow returned no flow_run_id: %s", result.json)
+            return jsonify(
+                {"error": "Failed to submit task: no flow run ID was returned"}
+            ), 500
+
         g_database.save_task(
             task_id=flow_run_id,
             batch_job_id="",
@@ -779,107 +798,16 @@ def diamond_endpoint_submit_job():
             checkpoint_path=artifact_path,
         )
         return jsonify({"flow_run_id": flow_run_id})
+    except DiamondResponseError:
+        raise
     except Exception as e:
         logger.exception("Failed to submit task to Globus Flows")
-        return jsonify(
-            {"status": e.http_status, "messages": e.messages, "error": str(e)}
-        ), e.http_status
-
-    # TODO: Move this to a polling function...
-    # Wait for submit task to complete with timeout to prevent hanging indefinitely
-    max_attempts = 12
-    submit_result = None
-    # Wait for a max of ~60s, with linear backoff
-    for i in range(max_attempts):
-        try:
-            submit_result = get_flow_result(request.cookies, flow_run_id)
-            logger.debug("Submit result: {}".format(submit_result))
-        except TaskPending:
-            time.sleep(i)
-            continue
-        except Exception as e:
-            logger.exception("Failed to fetch results for flow_run_id: %s", flow_run_id)
-            return jsonify(
-                {
-                    "error": "Failed to submit job - could not fetch results from endpoint",
-                    "task_id": flow_run_id,
-                    "details": str(e),
-                }
-            ), 500
-        else:
-            if submit_result["status"] != "ACTIVE":
-                break
-
-    if submit_result is None:
-        return jsonify(
-            {
-                "error": "Failed to submit job - task timed out after maximum attempts",
-                "task_id": flow_run_id,
-            }
-        ), 500
-
-    submit_stdout = getattr(submit_result, "stdout", "")
-    submit_stderr = getattr(submit_result, "stderr", "")
-    submit_returncode = getattr(submit_result, "returncode", None)
-
-    if submit_returncode not in (None, 0):
-        error_message = "Failed to submit job - sbatch returned a non-zero exit code"
-        if submit_stderr:
-            error_message = f"{error_message}: {submit_stderr}"
-        logger.error(
-            "Submit task failed with return code %s. stdout=%s stderr=%s",
-            submit_returncode,
-            submit_stdout,
-            submit_stderr,
-        )
-        return jsonify(
-            {
-                "error": error_message,
-                "stdout": submit_stdout,
-                "stderr": submit_stderr,
-                "returncode": submit_returncode,
-            }
-        ), 500
-
-    rendered_artifact_path = _extract_artifact_path_from_submit_stdout(submit_stdout)
-    if rendered_artifact_path:
-        artifact_path = rendered_artifact_path
-
-    # Parse SLURM job ID from output - currently only supporting SLURM-based systems
-    match = re.search(r"Submitted batch job (\d+)", submit_stdout)
-    if not match:
-        error_message = (
-            "Failed to submit job - could not parse job ID from SLURM output"
-        )
-        if submit_stderr:
-            error_message = f"{error_message}: {submit_stderr}"
-        logger.error(
-            "Could not parse job ID from stdout: %s stderr: %s",
-            submit_stdout,
-            submit_stderr,
-        )
-        return jsonify(
-            {
-                "error": error_message,
-                "stdout": submit_stdout,
-                "stderr": submit_stderr,
-                "returncode": submit_returncode,
-            }
-        ), 500
-
-    slurm_job_id = match.group(1)
-    logger.info(
-        "Task:{} is mapped to SLURM job ID:{}".format(flow_run_id, slurm_job_id)
-    )
-
-    return jsonify(
-        {
-            "task_id": flow_run_id,
-            "batch_job_id": slurm_job_id,
-            "task_name": task_name,
-            "message": "Task submitted successfully",
-        }
-    )
+        http_status = getattr(e, "http_status", 500)
+        messages = getattr(e, "messages", None)
+        payload = {"error": str(e)}
+        if messages is not None:
+            payload["messages"] = messages
+        return jsonify(payload), http_status
 
 
 @app.route("/api/get_task_status", methods=["GET"])
@@ -1039,18 +967,55 @@ def diamond_get_task_status():
         )
         for task in submitted_tasks:
             task_result = get_flow_result(request.cookies, task.task_id)
-            if task_result.get("status", None) == "SUCCEEDED":
-                slurm_job_id = task_result["details"]["output"]["run_function"][
+            flow_status = task_result.get("status", None)
+            if flow_status == "SUCCEEDED":
+                submit_stdout = task_result["details"]["output"]["run_function"][
                     "details"
                 ]["result"][0]
-                slurm_job_id = slurm_job_id.replace("Submitted batch job ", "").rstrip()
+                job_id_match = SBATCH_JOB_ID_PATTERN.search(submit_stdout)
+                if not job_id_match:
+                    logger.error(
+                        "Flow run for Task:%s succeeded but no SLURM job ID could be "
+                        "parsed from its output: %s",
+                        task.task_id,
+                        submit_stdout,
+                    )
+                    g_database.update_task_status(task.task_id, "FAILED")
+                    continue
+
+                slurm_job_id = job_id_match.group(1)
                 logger.info(
                     "Updating submitted Task {} with SLURM job ID {}".format(
                         task.task_id, slurm_job_id
                     )
                 )
+                artifact_path = _extract_artifact_path_from_submit_stdout(
+                    submit_stdout
+                )
+                if artifact_path:
+                    g_database.update_task_checkpoint_path(
+                        task.task_id, artifact_path
+                    )
                 g_database.update_task_status(task.task_id, "ACTIVE")
                 g_database.update_task_id(task.task_id, slurm_job_id)
+            elif flow_status in ("FAILED", "INACTIVE"):
+                # INACTIVE covers flows stuck needing manual action (e.g. a
+                # consent requirement) — from the user's perspective the
+                # submission is stuck either way, so surface both as failures
+                # instead of leaving the task shown as SUBMITTING forever.
+                logger.error(
+                    "Flow run for Task:%s ended with non-success status %s. Details: %s",
+                    task.task_id,
+                    flow_status,
+                    task_result.get("details"),
+                )
+                g_database.update_task_status(task.task_id, "FAILED")
+            elif flow_status is None:
+                logger.warning(
+                    "Unable to determine flow run status for Task:%s. Result: %s",
+                    task.task_id,
+                    task_result,
+                )
 
     # Reload the updated tasks from the database
     updated_tasks = g_database.load_tasks(identity_id=identity_id)

@@ -10,6 +10,8 @@ from diamond_backend.app.database.db import db
 from diamond_backend.app.database.models.container import Container
 from diamond_backend.app.database.models.dataset import Dataset
 from diamond_backend.app.database.models.endpoints import Endpoints
+from diamond_backend.app.database.models.flow import Flows  # noqa: F401
+from diamond_backend.app.database.models.function import Functions  # noqa: F401
 from diamond_backend.app.database.models.profile import Profile  # noqa: F401
 from diamond_backend.app.database.models.task import Task
 from diamond_backend.app.errors import EndpointNotFound
@@ -134,6 +136,15 @@ class Database:
             db.session.commit()
         else:
             # logger.error(f"Task {task_id} not found")
+            raise TaskNotFoundError(task_id=task_id)
+
+    def update_task_checkpoint_path(self, task_id, checkpoint_path):
+        logger.info(f"Updating task checkpoint path: {task_id}, {checkpoint_path}")
+        task = Task.query.filter_by(task_id=task_id).first()
+        if task:
+            task.checkpoint_path = checkpoint_path
+            db.session.commit()
+        else:
             raise TaskNotFoundError(task_id=task_id)
 
     def load_tasks(self, identity_id, status=None) -> list[Task]:

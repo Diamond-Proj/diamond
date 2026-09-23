@@ -1,14 +1,18 @@
 import ast
 import json
 import logging
+import platform
+import sys
 import urllib
 from importlib.resources import as_file, files
 
 import globus_sdk
 from flask import jsonify
+from globus_compute_sdk.version import __version__ as GLOBUS_COMPUTE_SDK_VERSION
 from jinja2 import Environment, FileSystemLoader
 
 from diamond_backend.app.database.models.flow import Flows
+from diamond_backend.app.errors import DiamondResponseError, InternalError, Unauthorized
 from diamond_backend.app.utils.login_flow import load_portal_client
 
 with as_file(files("diamond_backend").joinpath("app/data/template")) as fpath:
@@ -38,20 +42,14 @@ def _validate_source(source: str):
 def get_flow_client(request_cookies):
     if not (tokens_cookie := request_cookies.get("tokens")):
         logger.error("No tokens cookie found in request")
-        raise globus_sdk.GlobusAPIError(
-            "No authentication tokens found",
-            http_status=401,
-        )
+        raise Unauthorized("No authentication tokens found")
     try:
         # Parse tokens
         url_decoded = urllib.parse.unquote(tokens_cookie)
         tokens_data = json.loads(url_decoded)
     except json.JSONDecodeError as e:
         logger.error(f"Error decoding tokens: {e}")
-        raise globus_sdk.GlobusAPIError(
-            "Invalid token format",
-            http_status=401,
-        )
+        raise Unauthorized("Invalid token format")
 
     try:
         client = load_portal_client()
@@ -63,7 +61,7 @@ def get_flow_client(request_cookies):
             flow_token = tokens_data[flow_id]
         else:
             logger.error("No flow token found in tokens")
-            raise globus_sdk.GlobusAPIError("No flow token found", http_status=401)
+            raise Unauthorized("No flow token found")
 
         # token_data = tokens_data.get("flows.globus.org")
         authorizer = globus_sdk.RefreshTokenAuthorizer(
@@ -74,21 +72,17 @@ def get_flow_client(request_cookies):
         )
         flow_client = globus_sdk.FlowsClient(authorizer=authorizer)
         return flow_client
+    except DiamondResponseError:
+        raise
     except Exception as e:
         logger.error(f"Error initializing transfer client: {e}")
-        raise globus_sdk.GlobusAPIError(
-            f"Error initializing transfer client: {str(e)}",
-            http_status=500,
-        )
+        raise InternalError(f"Error initializing transfer client: {str(e)}")
 
 
 def get_specific_flow_client(request_cookies, flow_id) -> globus_sdk.SpecificFlowClient:
     if not (tokens_cookie := request_cookies.get("tokens")):
         logger.error("No tokens cookie found in request")
-        raise globus_sdk.GlobusAPIError(
-            "No authentication tokens found",
-            http_status=401,
-        )
+        raise Unauthorized("No authentication tokens found")
 
     try:
         # Parse tokens
@@ -96,10 +90,7 @@ def get_specific_flow_client(request_cookies, flow_id) -> globus_sdk.SpecificFlo
         tokens_data = json.loads(url_decoded)
     except json.JSONDecodeError as e:
         logger.error(f"Error decoding tokens: {e}")
-        raise globus_sdk.GlobusAPIError(
-            "Invalid token format",
-            http_status=401,
-        )
+        raise Unauthorized("Invalid token format")
 
     client = load_portal_client()
     flow = Flows.query.filter_by(template="run_function").first()
@@ -121,7 +112,7 @@ def submit_flow(request_json, request_cookies, function_id, fn_params):
     flow_entry = Flows.query.filter_by(template="run_function").first()
     if not flow_entry:
         logger.error("Run function flow not found in database.")
-        return jsonify({"error": "Run function flow not initialized"})
+        return jsonify({"error": "Run function flow not initialized"}), 500
 
     flow_id = flow_entry.flow_id
     logger.info(f"Using existing flow definition with ID: {flow_id}")
@@ -139,13 +130,15 @@ def submit_flow(request_json, request_cookies, function_id, fn_params):
                         "partition": fn_params.get("partition"),
                     },
                     "user_runtime": {
-                        "globus_compute_sdk_version": fn_params.get("globus_compute_sdk_version", "4.15.0"),
+                        "globus_compute_sdk_version": fn_params.get(
+                            "globus_compute_sdk_version", GLOBUS_COMPUTE_SDK_VERSION
+                        ),
                         "python": {
-                            "version": "3.13.9",
-                            "version_tuple": [3, 13, 9],
-                            "version_info": [3, 13, 9, "final", 0],
-                            "implementation": "CPython",
-                            "compiler": "GCC",
+                            "version": platform.python_version(),
+                            "version_tuple": list(sys.version_info[:3]),
+                            "version_info": list(sys.version_info),
+                            "implementation": platform.python_implementation(),
+                            "compiler": platform.python_compiler(),
                         },
                     },
                 },
@@ -163,7 +156,7 @@ def submit_flow(request_json, request_cookies, function_id, fn_params):
                         "flow_id": None,
                         "required_scopes": required_scopes,
                     }
-                )
+                ), 200
             else:
                 return jsonify(
                     {"error": str(e), "messages": e.messages, "code": e.http_status}
@@ -171,8 +164,10 @@ def submit_flow(request_json, request_cookies, function_id, fn_params):
 
         flow_run_id = flow_run_response["run_id"]
         logger.info(f"Globus Flow started with run_id: {flow_run_id}")
-        return jsonify({"flow_run_id": flow_run_id, "flow_id": flow_id})
+        return jsonify({"flow_run_id": flow_run_id, "flow_id": flow_id}), 200
 
+    except DiamondResponseError:
+        raise
     except globus_sdk.GlobusAPIError as e:
         logger.exception("Globus API error when creating or running flow.")
         return jsonify(
@@ -184,13 +179,6 @@ def submit_flow(request_json, request_cookies, function_id, fn_params):
 
 
 def get_flow_result(request_cookies, flow_run_id):
-    try:
-        gfc = get_flow_client(request_cookies)
-    except globus_sdk.GlobusAPIError as e:
-        return jsonify({"error": str(e), "messages": e.messages}), e.http_status
-    except Exception as e:
-        logger.exception("Failed to get Globus Flows client.")
-        return jsonify({"error": f"Failed to get Globus Flows client: {str(e)}"}), 500
-
+    gfc = get_flow_client(request_cookies)
     flow_status = gfc.get_run(flow_run_id)
     return flow_status
