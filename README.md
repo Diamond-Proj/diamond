@@ -66,5 +66,3 @@ docker compose --profile sqlite up -d
 docker compose --profile sqlite exec sqlite sh
 # inside: sqlite3 diamond.db
 ```
-
-
