@@ -14,13 +14,9 @@ RUN pnpm install --frozen-lockfile --ignore-scripts
 
 FROM base AS builder
 WORKDIR /app
-ARG FLASK_URL
-ARG NEXT_PUBLIC_GLOBUS_CLIENT_ID
-# Both are NEXT_PUBLIC_/build-time values Next.js inlines into the client
-# bundle -- a runtime ECS env var can't supply them after the fact, so they
-# must be passed as --build-arg and rebuilt whenever they change.
-RUN [ -n "$FLASK_URL" ] || { echo "ERROR: Missing required env_var: FLASK_URL"; exit 1; }
-RUN [ -n "$NEXT_PUBLIC_GLOBUS_CLIENT_ID" ] || { echo "ERROR: Missing required env_var: NEXT_PUBLIC_GLOBUS_CLIENT_ID"; exit 1; }
+# Note:FLASK_URL needs to be baked into the container, rebuild container
+# with deployment specifics for Fargate/ECS
+RUN [-n "$FLASK_URL" ] || { echo "ERROR: Missing required env_var: FLASK_URL"; exit 1; }
 COPY --from=deps /app/node_modules ./node_modules
 COPY . .
 RUN pnpm build

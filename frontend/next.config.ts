@@ -22,6 +22,11 @@ const nextConfig: NextConfig = {
       {
         protocol: 'https',
         hostname: 'avatar.vercel.sh'
+      },
+      {
+        protocol: 'https',
+        hostname: 'img.shields.io',
+        pathname: '/badge/**'
       }
     ]
   },
