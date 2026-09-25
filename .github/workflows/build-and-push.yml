@@ -67,6 +67,9 @@ jobs:
           push: true
           provenance: false
           tags: ${{ steps.ecr.outputs.registry }}/${{ matrix.app }}:${{ needs.meta.outputs.tag }}
+          build-args: |
+            FLASK_URL=${{ vars.FLASK_URL }}
+            NEXT_PUBLIC_GLOBUS_CLIENT_ID=${{ vars.NEXT_PUBLIC_GLOBUS_CLIENT_ID }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.ref.name=${{ needs.meta.outputs.ref }}
