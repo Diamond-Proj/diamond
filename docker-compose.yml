@@ -1,0 +1,74 @@
+name: diamond
+
+# Profiles:
+#   (none)    — frontend + backend only; supply SQLALCHEMY_DATABASE_URI via backend/.env
+#   NOTE: Only ^ this mode is tested so far
+#   postgres  — adds PostgreSQL; use SQLALCHEMY_DATABASE_URI=postgresql://diamond:diamond@db:5432/diamond
+#   sqlite    — adds a sqlite3 CLI sidecar sharing /data with the backend;
+#               use SQLALCHEMY_DATABASE_URI=sqlite:////data/diamond.db
+#               access via: docker compose --profile sqlite exec sqlite sh
+
+services:
+  frontend:
+    build:
+      context: ./frontend
+      args:
+        FLASK_URL: http://backend:5328
+    ports:
+      - "3000:3000"
+    env_file:
+      - ./frontend/.env
+    environment:
+      # Overrides FLASK_URL so Next.js rewrites reach the backend container
+      FLASK_URL: http://backend:5328
+    depends_on:
+      - backend
+
+  backend:
+    build:
+      context: ./backend
+    ports:
+      - "5328:5328"
+    env_file:
+      - ./backend/.env
+    environment:
+      FLASK_ENV: production
+      GUNICORN_CMD_ARGS: "--workers=2 --threads=4 --worker-class=gthread --bind=0.0.0.0:5328"
+      HOST: http://localhost:5328
+      NEXT_URL: http://localhost:3000
+    volumes:
+      - sqlite_data:/data
+    depends_on:
+      db:
+        condition: service_healthy
+        required: false
+
+  db:
+    image: postgres:16-alpine
+    profiles: [postgres]
+    environment:
+      POSTGRES_DB: diamond
+      POSTGRES_USER: diamond
+      POSTGRES_PASSWORD: diamond
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U diamond"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  sqlite:
+    image: alpine:3.20
+    profiles: [sqlite]
+    # Keeps the container running so you can exec into it with sqlite3
+    command: ["sh", "-c", "apk add --no-cache sqlite && tail -f /dev/null"]
+    volumes:
+      - sqlite_data:/data
+    working_dir: /data
+
+volumes:
+  postgres_data:
+  sqlite_data:

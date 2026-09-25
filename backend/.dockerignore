@@ -16,3 +16,7 @@ coverage.xml
 *,cover
 *.log
 .git
+
+.env
+.env.*
+!.env.example
