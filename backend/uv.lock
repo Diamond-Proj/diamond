@@ -240,7 +240,7 @@ requires-dist = [
     { name = "flask-cors", specifier = "==5.0.*" },
     { name = "flask-migrate", specifier = "==4.1.*" },
     { name = "flask-sqlalchemy", specifier = "==3.1.1" },
-    { name = "globus-compute-sdk", specifier = ">=4.15" },
+    { name = "globus-compute-sdk", specifier = "==4.16.*" },
     { name = "gunicorn", specifier = "==23.0.*" },
     { name = "jinja2", specifier = "==3.1.6" },
     { name = "psycopg2-binary", specifier = "==2.9.*" },
@@ -396,7 +396,7 @@ wheels = [
 
 [[package]]
 name = "globus-compute-sdk"
-version = "4.15.0"
+version = "4.16.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "colorama" },
@@ -411,9 +411,9 @@ dependencies = [
     { name = "tblib" },
     { name = "texttable" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/a3/f7/e2d1fdc02119be6a560cb610d86c34618e887b61c92c3e7c3940246acabf/globus_compute_sdk-4.15.0.tar.gz", hash = "sha256:6e4937756fd0769948296ba909029e3df81f802e6d59f216e7f90305f6624f34", size = 65713, upload-time = "2026-07-15T20:24:43.117Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/e2/2c/9e6c1bc494dd25b81550f194c6cbf09d3fcb321984d81ecfe5a5efc44b11/globus_compute_sdk-4.16.0.tar.gz", hash = "sha256:a34b2ab5ea1eeaf8771645959471128b987ad8eb5376bd27cdf6b9d5ff5ee4e6", size = 65683, upload-time = "2026-08-26T16:21:19.768Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/a5/ba/15e85dbc34e6aab5794165365ece4cc35621ea1ea91c11bda0bfe767e15a/globus_compute_sdk-4.15.0-py3-none-any.whl", hash = "sha256:ccde95af6711c62106353c4078429025b3f4f3d79e7f809f59876289ec9715bf", size = 74850, upload-time = "2026-07-15T20:24:41.67Z" },
+    { url = "https://files.pythonhosted.org/packages/97/3d/e901d31614973f5c957841ee7e084180c73542f1101759e96b804599d9c2/globus_compute_sdk-4.16.0-py3-none-any.whl", hash = "sha256:f3333c915b21b922a3320c471fe54759134c3b9c4e549544f1683bccb7e158d8", size = 74879, upload-time = "2026-08-26T16:21:18.009Z" },
 ]
 
 [[package]]
