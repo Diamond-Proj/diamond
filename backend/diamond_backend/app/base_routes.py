@@ -11,10 +11,7 @@ from diamond_backend.app.utils.decorators import authenticated
 
 logger = logging.getLogger(__name__)
 
-try:
-    GLOBUS_COMPUTE_SDK_VERSION = metadata.version("globus-compute-sdk")
-except metadata.PackageNotFoundError:
-    GLOBUS_COMPUTE_SDK_VERSION = "unknown"
+GLOBUS_COMPUTE_SDK_VERSION = metadata.version("globus-compute-sdk")
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
