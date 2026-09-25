@@ -5,6 +5,7 @@
 # Docker run command : docker run --env-file .env -p 3000:3000 diamond_frontend:0.1.0
 
 FROM node:24.21.0-alpine AS base
+RUN apk add --no-cache git
 RUN corepack enable && corepack prepare pnpm@12.3.4 --activate
 
 FROM base AS deps
