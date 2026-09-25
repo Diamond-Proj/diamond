@@ -1,0 +1,80 @@
+name: build-and-push
+
+on:
+  push:
+    branches: [main]        # -> staging
+    tags: ['v*.*.*']        # -> prod
+  workflow_dispatch:        # -> dev (any branch)
+
+permissions:
+  contents: read
+
+jobs:
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      env: ${{ steps.m.outputs.env }}
+      ref: ${{ steps.m.outputs.ref }}
+      tag: ${{ steps.m.outputs.tag }}
+    steps:
+      - id: m
+        run: |
+          REF=$(echo "$GITHUB_REF_NAME" | tr '/' '-' | tr -cd 'A-Za-z0-9_.-' | cut -c1-100)
+          if   [[ "$GITHUB_REF_TYPE"   == "tag"  ]]; then ENV=prod
+          elif [[ "$GITHUB_EVENT_NAME" == "push" ]]; then ENV=staging
+          else ENV=dev; fi
+          echo "env=$ENV"                    >> "$GITHUB_OUTPUT"
+          echo "ref=$REF"                    >> "$GITHUB_OUTPUT"
+          echo "tag=${REF}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+
+  build:
+    needs: meta
+    runs-on: ubuntu-latest
+    environment: ${{ needs.meta.outputs.env }}   # lets prod use env-scoped credentials
+    strategy:
+      matrix:
+        app: [backend, frontend]    # ECR repo name == app name
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      # Tags are immutable: skip the build if this tag already exists
+      # (re-runs, or a dev dispatch of a main commit staging already built).
+      - id: exists
+        run: |
+          if aws ecr describe-images --repository-name "${{ matrix.app }}" \
+               --image-ids imageTag="${{ needs.meta.outputs.tag }}" >/dev/null 2>&1; then
+            echo "skip=true"  >> "$GITHUB_OUTPUT"
+          else
+            echo "skip=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - if: steps.exists.outputs.skip == 'false'
+        uses: docker/setup-buildx-action@v3
+
+      - if: steps.exists.outputs.skip == 'false'
+        uses: docker/build-push-action@v6
+        with:
+          context: ./${{ matrix.app }}
+          push: true
+          provenance: false
+          tags: ${{ steps.ecr.outputs.registry }}/${{ matrix.app }}:${{ needs.meta.outputs.tag }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.ref.name=${{ needs.meta.outputs.ref }}
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}
+
+      - name: Summary
+        run: |
+          STATUS=$([[ "${{ steps.exists.outputs.skip }}" == "true" ]] && echo "already existed" || echo "pushed")
+          echo "**${{ matrix.app }}** (${{ needs.meta.outputs.env }}): \`${{ steps.ecr.outputs.registry }}/${{ matrix.app }}:${{ needs.meta.outputs.tag }}\` — $STATUS" >> "$GITHUB_STEP_SUMMARY"
