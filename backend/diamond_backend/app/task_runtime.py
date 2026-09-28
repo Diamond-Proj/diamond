@@ -18,6 +18,7 @@ from diamond_backend.app.utils.functions import (
     stage_base64_file,
 )
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
+from diamond_backend.app.utils.task_status import is_stale, is_terminal
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,6 @@ SLURM_STATE_MAPPING = {
     "RUNNING": "RUNNING",
     "PENDING": "PENDING",
 }
-
-TERMINAL_STATES = ["COMPLETED", "COMPLETING", "FAILED", "MISSING"]
 
 
 class TaskSubmissionError(Exception):
@@ -320,7 +319,8 @@ def refreshable_tasks(tasks):
     return [
         task
         for task in tasks
-        if task.task_status not in TERMINAL_STATES
+        if not is_terminal(task.task_status)
+        and not is_stale(task)
         and _endpoint_is_pollable(task.compute_endpoint_id)
     ]
 
