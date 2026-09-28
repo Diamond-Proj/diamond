@@ -28,11 +28,11 @@ def is_terminal(raw_status) -> bool:
 def task_age(task, *, now=None) -> timedelta | None:
     """Age of a task, or None when it cannot be computed.
 
-    Never raises: this sits behind four endpoints on a 10s poll, so an absent or
-    odd timestamp has to degrade to "unknown" rather than 500.
+    task_create_time is a nullable column, and this sits behind four endpoints on
+    a 10s poll, so a NULL has to degrade to "unknown" rather than 500.
     """
-    created = getattr(task, "task_create_time", None)
-    if not isinstance(created, datetime):
+    created = task.task_create_time
+    if created is None:
         return None
     # Matching created's tzinfo keeps the subtraction valid whether rows are
     # naive or aware, without asserting which they are.
