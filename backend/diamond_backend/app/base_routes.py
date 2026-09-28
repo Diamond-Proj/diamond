@@ -1,6 +1,7 @@
 import logging
 import sys
 from datetime import datetime
+from importlib import metadata
 
 from flask import current_app, jsonify, redirect, request
 
@@ -9,6 +10,8 @@ from diamond_backend.app.errors import DiamondResponseError
 from diamond_backend.app.utils.decorators import authenticated
 
 logger = logging.getLogger(__name__)
+
+GLOBUS_COMPUTE_SDK_VERSION = metadata.version("globus-compute-sdk")
 
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
@@ -57,24 +60,16 @@ def healthcheck():
     version_info = str(sys.version_info)
     # Get git information
     git_info = get_git_info()
+    common_fields = {
+        "timestamp": datetime.utcnow().isoformat(),
+        "git": git_info,
+        "python_version": version_info,
+        "globus_compute_sdk_version": GLOBUS_COMPUTE_SDK_VERSION,
+    }
     if git_info["commit_sha"] == "unknown":
-        return jsonify(
-            {
-                "status": "unhealthy",
-                "timestamp": datetime.utcnow().isoformat(),
-                "git": git_info,
-                "python_version": version_info,
-            }
-        ), 500
+        return jsonify({"status": "unhealthy", **common_fields}), 500
     else:
-        return jsonify(
-            {
-                "status": "healthy",
-                "timestamp": datetime.utcnow().isoformat(),
-                "git": git_info,
-                "python_version": version_info,
-            }
-        ), 200
+        return jsonify({"status": "healthy", **common_fields}), 200
 
 
 @app.route("/api/is_authenticated", methods=["GET"])

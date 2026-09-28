@@ -15,7 +15,7 @@
     "lint:fix": "eslint --fix",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --write .",
-    "prepare": "git config core.hooksPath .githooks",
+    "prepare": "if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi",
     "test": "playwright test",
     "test:interactive": "playwright test --ui",
     "test:report": "playwright show-report"
