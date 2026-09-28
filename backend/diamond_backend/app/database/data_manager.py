@@ -6,7 +6,7 @@ import typing as t
 
 from flask import Flask
 
-from diamond_backend.app.database.db import db
+from diamond_backend.app.database.db import MIGRATIONS_DIR, db, migrate
 from diamond_backend.app.database.models.container import Container
 from diamond_backend.app.database.models.dataset import Dataset
 from diamond_backend.app.database.models.endpoints import Endpoints
@@ -30,7 +30,9 @@ class Database:
         """Constructor."""
         self.app = app
         db.init_app(app)
-        self.ensure_tables_exist()
+        # render_as_batch lets Alembic ALTER tables on SQLite
+        migrate.init_app(app, db, directory=MIGRATIONS_DIR, render_as_batch=True)
+        # self.ensure_db_file_exists()
 
         @app.teardown_appcontext
         def close_connection(exception):

@@ -137,6 +137,15 @@ export const landingPageContent = {
       label: 'Read the docs',
       href: 'https://docs.diamondhpc.ai'
     }
+  },
+  funding: {
+    acknowledgement:
+      'This material is based upon work supported by the National Science Foundation under Award Nos. 2401245, 2311767, 2311768, and 2311769.',
+    awards: ['2401245', '2311767', '2311768', '2311769'].map((number) => ({
+      number,
+      href: `https://www.nsf.gov/awardsearch/showAward?AWD_ID=${number}`,
+      badgeSrc: `https://img.shields.io/badge/NSF-${number}-1f6ea9?style=flat-square`
+    }))
   }
 } as const;
 

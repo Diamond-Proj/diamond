@@ -1,0 +1,30 @@
+{
+  "page": {
+    "title": "Contact us"
+  },
+  "emails": [
+    {
+      "name": "Diamond HPC Team",
+      "email": "diamondhpc-team@googlegroups.com",
+      "role": "Community · Support · Collaboration",
+      "bio": "Contact the Diamond HPC team with questions, feedback, partnership inquiries, or ideas for contributing. We’ll connect you with the right person."
+    }
+  ],
+  "slack": {
+    "label": "Slack",
+    "joinUrl": "https://join.slack.com/t/diamond-7ex6986/shared_invite/zt-46reavj0k-_Gz_UKUxN8JD~weFSsH45A",
+    "status": "Invite link coming soon"
+  },
+  "github": [
+    {
+      "label": "Diamond project repository",
+      "repositoryUrl": "https://github.com/Diamond-Proj/diamond",
+      "issuesUrl": "https://github.com/Diamond-Proj/diamond/issues/new/choose",
+      "pullRequestsUrl": "https://github.com/Diamond-Proj/diamond/pulls"
+    }
+  ],
+  "navigation": {
+    "label": "Contact us",
+    "href": "/contact"
+  }
+}
