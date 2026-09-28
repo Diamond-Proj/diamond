@@ -1,6 +1,13 @@
 'use client';
 
-import { CheckCircle, Clock, Loader, Play, XCircle } from 'lucide-react';
+import {
+  CircleDashed,
+  CheckCircle,
+  Clock,
+  Loader,
+  Play,
+  XCircle
+} from 'lucide-react';
 import { type ComponentType } from 'react';
 
 import { Task } from '../tasks.types';
@@ -24,7 +31,8 @@ export function TaskStats({ tasks, loading }: TaskStatsProps) {
     running: tasks.filter((task) => task.status === 'RUNNING').length,
     completed: tasks.filter((task) => task.status === 'COMPLETED').length,
     pending: tasks.filter((task) => task.status === 'PENDING').length,
-    failed: tasks.filter((task) => task.status === 'FAILED').length
+    failed: tasks.filter((task) => task.status === 'FAILED').length,
+    stale: tasks.filter((task) => task.status === 'STALE').length
   };
 
   const statItems: StatItem[] = [
@@ -62,11 +70,18 @@ export function TaskStats({ tasks, loading }: TaskStatsProps) {
       icon: XCircle,
       iconSurface: 'bg-rose-600',
       accent: 'bg-rose-500/6 dark:bg-rose-500/12'
+    },
+    {
+      label: 'Stale',
+      value: stats.stale,
+      icon: CircleDashed,
+      iconSurface: 'bg-slate-500',
+      accent: 'bg-slate-500/6 dark:bg-slate-500/12'
     }
   ];
 
   return (
-    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-5">
+    <section className="grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-6">
       {statItems.map((stat) => {
         const Icon = stat.icon;
         return (

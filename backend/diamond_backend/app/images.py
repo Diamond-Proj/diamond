@@ -17,11 +17,15 @@ from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.scripts_render import (
     render_task_template_script,
 )
+from diamond_backend.app.utils.task_status import effective_status
 
 logger = logging.getLogger(__name__)
 
 CONTAINER_BUILD_TASK_TEMPLATE = "container-build.j2"
-CONTAINER_BUILD_TERMINAL_STATES = {"COMPLETED", "FAILED", "MISSING"}
+# Build statuses that resolve to completed/failed. Everything other than
+# COMPLETED reports as failed, including STALE: a build that aged out never
+# succeeded. Keep COMPLETING out, it means finishing rather than failed.
+CONTAINER_BUILD_TERMINAL_STATES = {"COMPLETED", "FAILED", "MISSING", "STALE"}
 
 
 @app.route("/api/image_builder", methods=["POST"])
@@ -182,7 +186,7 @@ def get_build_log():
         log_path=log_path,
     )
 
-    task_status = str(build_task.task_status or "").strip().upper()
+    task_status = effective_status(build_task)
     status = task_status.lower() if task_status else "unknown"
     if task_status in CONTAINER_BUILD_TERMINAL_STATES:
         status = "completed" if task_status == "COMPLETED" else "failed"
