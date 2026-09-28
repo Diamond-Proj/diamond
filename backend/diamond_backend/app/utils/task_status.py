@@ -41,9 +41,8 @@ def task_age(task, *, now=None) -> timedelta | None:
 
 
 def is_stale(task, *, now=None) -> bool:
-    # Order matters: a terminal task's status is final and known, so staleness
-    # does not apply -- checking age first would relabel every long-finished job.
-    if is_terminal(getattr(task, "task_status", None)):
+    # Terminal first: a finished job's status is final however old it is.
+    if is_terminal(task.task_status):
         return False
     age = task_age(task, now=now)
     if age is None:
@@ -55,4 +54,4 @@ def effective_status(task, *, now=None) -> str:
     """The status to display and branch on. Derived; never persisted."""
     if is_stale(task, now=now):
         return STALE_STATUS
-    return normalize_status(getattr(task, "task_status", None))
+    return normalize_status(task.task_status)
