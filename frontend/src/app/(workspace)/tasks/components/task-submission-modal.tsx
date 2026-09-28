@@ -45,14 +45,7 @@ export function TaskSubmissionModal({
     num_of_nodes: 1,
     time_duration: '',
     dataset_id: '',
-    slurm_options: '',
-    input_path: 'prompts.jsonl',
-    input_content: '',
-    output_path: 'results.json',
-    model: 'Qwen2.5-3B-Instruct',
-    engine: 'vllm',
-    batch_size: 4,
-    hf_token: ''
+    slurm_options: ''
   };
 
   const [formData, setFormData] =
@@ -87,8 +80,6 @@ export function TaskSubmissionModal({
   const [hasDiamondDir, setHasDiamondDir] = useState<boolean>(true);
   const [activeTemplateId, setActiveTemplateId] = useState<string | null>(null);
   const activeTemplate = TASK_TEMPLATES.find((t) => t.id === activeTemplateId);
-  const isLlmfluxTemplate =
-    activeTemplate?.submissionEndpoint === '/api/launch_llmflux';
   const activeCustomFields = activeTemplate?.customFields ?? [];
   const hiddenFields = new Set(activeTemplate?.hiddenFields ?? []);
   const isFieldHidden = (fieldKey: string) => hiddenFields.has(fieldKey);
@@ -421,18 +412,13 @@ export function TaskSubmissionModal({
     } else {
       setHasDiamondDir(true);
     }
-    if (!isLlmfluxTemplate) {
-      fetchContainersForEndpoint();
-    } else {
-      setContainers([]);
-    }
+    fetchContainersForEndpoint();
   }, [
     formData.endpoint,
     fetchPartitions,
     fetchAccounts,
     fetchContainersForEndpoint,
-    checkDiamondDir,
-    isLlmfluxTemplate
+    checkDiamondDir
   ]);
 
   const templateHasUpload = activeCustomFields.some((f) => f.type === 'file');
@@ -460,29 +446,11 @@ export function TaskSubmissionModal({
     if (!formData.partition) newErrors.partition = 'Partition is required';
     if (!formData.account.trim()) newErrors.account = 'Account is required';
 
-    if (isLlmfluxTemplate) {
-      if (!formData.input_path?.trim()) {
-        newErrors.input_path = 'Input path is required';
-      }
-      if (!formData.output_path?.trim()) {
-        newErrors.output_path = 'Output path is required';
-      }
-      if (!formData.model?.trim()) {
-        newErrors.model = 'Model is required';
-      }
-      if (!formData.engine || !['vllm', 'ollama'].includes(formData.engine)) {
-        newErrors.engine = 'Engine must be vllm or ollama';
-      }
-      if (!formData.batch_size || formData.batch_size < 1) {
-        newErrors.batch_size = 'Batch size must be at least 1';
-      }
-    } else {
-      if (!isFieldHidden('container') && !formData.container) {
-        newErrors.container = 'Container is required';
-      }
-      if (!isFieldHidden('time_duration') && !formData.time_duration) {
-        newErrors.time_duration = 'Time duration is required';
-      }
+    if (!isFieldHidden('container') && !formData.container) {
+      newErrors.container = 'Container is required';
+    }
+    if (!isFieldHidden('time_duration') && !formData.time_duration) {
+      newErrors.time_duration = 'Time duration is required';
     }
 
     activeCustomFields.forEach((field) => {
@@ -521,58 +489,39 @@ export function TaskSubmissionModal({
 
     setLoading((prev) => ({ ...prev, submit: true }));
     try {
-      const submissionEndpoint =
-        activeTemplate?.submissionEndpoint ?? '/api/submit_task';
-      const payload =
-        submissionEndpoint === '/api/launch_llmflux'
-          ? {
-              endpoint: formData.endpoint,
-              taskName: formData.taskName,
-              account: formData.account,
-              partition: formData.partition,
-              input_path: formData.input_path,
-              input_content: formData.input_content || '',
-              output_path: formData.output_path,
-              model: formData.model,
-              engine: formData.engine,
-              batch_size: formData.batch_size,
-              hf_token: formData.hf_token || ''
-            }
-          : {
-              endpoint: formData.endpoint,
-              taskName: formData.taskName,
-              partition: formData.partition,
-              account: formData.account,
-              reservation: isFieldHidden('reservation')
-                ? undefined
-                : formData.reservation || undefined,
-              container: isFieldHidden('container')
-                ? undefined
-                : formData.container || undefined,
-              task: isFieldHidden('task')
-                ? undefined
-                : formData.task || undefined,
-              num_of_nodes: isFieldHidden('num_of_nodes')
-                ? undefined
-                : formData.num_of_nodes,
-              time_duration: isFieldHidden('time_duration')
-                ? undefined
-                : formData.time_duration,
-              dataset_id: isFieldHidden('dataset_id')
-                ? undefined
-                : formData.dataset_id || undefined,
-              slurm_options: isFieldHidden('slurm_options')
-                ? undefined
-                : formData.slurm_options || undefined,
-              task_template: activeTemplate?.taskTemplate || undefined,
-              task_define: Object.fromEntries(
-                Object.entries(formData).filter(
-                  ([key, value]) => value !== undefined && !isFieldHidden(key)
-                )
-              )
-            };
+      const payload = {
+        endpoint: formData.endpoint,
+        taskName: formData.taskName,
+        partition: formData.partition,
+        account: formData.account,
+        reservation: isFieldHidden('reservation')
+          ? undefined
+          : formData.reservation || undefined,
+        container: isFieldHidden('container')
+          ? undefined
+          : formData.container || undefined,
+        task: isFieldHidden('task') ? undefined : formData.task || undefined,
+        num_of_nodes: isFieldHidden('num_of_nodes')
+          ? undefined
+          : formData.num_of_nodes,
+        time_duration: isFieldHidden('time_duration')
+          ? undefined
+          : formData.time_duration,
+        dataset_id: isFieldHidden('dataset_id')
+          ? undefined
+          : formData.dataset_id || undefined,
+        slurm_options: isFieldHidden('slurm_options')
+          ? undefined
+          : formData.slurm_options || undefined,
+        task_template: activeTemplate?.taskTemplate || undefined,
+        task_define: Object.fromEntries(
+          Object.entries(formData).filter(
+            ([key, value]) => value !== undefined && !isFieldHidden(key)
+          )
+        )
+      };
 
-      const response = await fetch(submissionEndpoint, {
+      const response = await fetch('/api/submit_task', {
         method: 'POST',
         credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
@@ -775,345 +724,163 @@ export function TaskSubmissionModal({
                 )}
               </div>
 
-              {!isLlmfluxTemplate ? (
-                <>
-                  {!isFieldHidden('container') && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Container *
-                      </label>
-                      <div className="mt-1">
-                        <VirtualSelect
-                          options={containers}
-                          selected={formData.container}
-                          onSelect={(value) =>
-                            setFormData((prev) => ({
-                              ...prev,
-                              container: value
-                            }))
-                          }
-                          placeholder="Select container"
-                          loading={loading.containers}
-                          disabled={!formData.endpoint}
-                          className={errors.container ? 'border-red-500' : ''}
-                        />
-                      </div>
-                      {errors.container && (
-                        <p className="mt-1 text-sm text-red-600">
-                          {errors.container}
-                        </p>
-                      )}
-                    </div>
+              {!isFieldHidden('container') && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Container *
+                  </label>
+                  <div className="mt-1">
+                    <VirtualSelect
+                      options={containers}
+                      selected={formData.container}
+                      onSelect={(value) =>
+                        setFormData((prev) => ({
+                          ...prev,
+                          container: value
+                        }))
+                      }
+                      placeholder="Select container"
+                      loading={loading.containers}
+                      disabled={!formData.endpoint}
+                      className={errors.container ? 'border-red-500' : ''}
+                    />
+                  </div>
+                  {errors.container && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.container}
+                    </p>
                   )}
+                </div>
+              )}
 
-                  {!isFieldHidden('dataset_id') && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Dataset (Optional)
-                      </label>
-                      <div className="mt-1">
-                        <VirtualSelect
-                          options={datasetOptions}
-                          selected={getSelectedDatasetDisplay()}
-                          onSelect={(displayName) => {
-                            const id = datasetMap.get(displayName);
-                            setFormData((prev) => ({
-                              ...prev,
-                              dataset_id: id || ''
-                            }));
-                          }}
-                          placeholder="Select dataset"
-                          loading={loading.datasets}
-                        />
-                      </div>
-                    </div>
+              {!isFieldHidden('dataset_id') && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Dataset (Optional)
+                  </label>
+                  <div className="mt-1">
+                    <VirtualSelect
+                      options={datasetOptions}
+                      selected={getSelectedDatasetDisplay()}
+                      onSelect={(displayName) => {
+                        const id = datasetMap.get(displayName);
+                        setFormData((prev) => ({
+                          ...prev,
+                          dataset_id: id || ''
+                        }));
+                      }}
+                      placeholder="Select dataset"
+                      loading={loading.datasets}
+                    />
+                  </div>
+                </div>
+              )}
+
+              {!isFieldHidden('reservation') && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Reservation (Optional)
+                  </label>
+                  <Input
+                    type="text"
+                    value={formData.reservation}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        reservation: e.target.value
+                      }))
+                    }
+                    placeholder="Enter reservation"
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              {!isFieldHidden('num_of_nodes') && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Number of Nodes
+                  </label>
+                  <Input
+                    type="number"
+                    min="1"
+                    value={formData.num_of_nodes}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        num_of_nodes: parseInt(e.target.value) || 1
+                      }))
+                    }
+                    placeholder="1"
+                    className="mt-1"
+                  />
+                </div>
+              )}
+
+              {!isFieldHidden('time_duration') && (
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Time Duration (HH:MM:SS) *
+                  </label>
+                  <Input
+                    type="text"
+                    value={formData.time_duration}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        time_duration: e.target.value
+                      }))
+                    }
+                    placeholder="01:00:00"
+                    className={`mt-1 ${errors.time_duration ? 'border-red-500' : ''}`}
+                  />
+                  {errors.time_duration && (
+                    <p className="mt-1 text-sm text-red-600">
+                      {errors.time_duration}
+                    </p>
                   )}
+                </div>
+              )}
 
-                  {!isFieldHidden('reservation') && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Reservation (Optional)
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.reservation}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            reservation: e.target.value
-                          }))
-                        }
-                        placeholder="Enter reservation"
-                        className="mt-1"
-                      />
-                    </div>
-                  )}
-
-                  {!isFieldHidden('num_of_nodes') && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Number of Nodes
-                      </label>
-                      <Input
-                        type="number"
-                        min="1"
-                        value={formData.num_of_nodes}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            num_of_nodes: parseInt(e.target.value) || 1
-                          }))
-                        }
-                        placeholder="1"
-                        className="mt-1"
-                      />
-                    </div>
-                  )}
-
-                  {!isFieldHidden('time_duration') && (
-                    <div>
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Time Duration (HH:MM:SS) *
-                      </label>
-                      <Input
-                        type="text"
-                        value={formData.time_duration}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            time_duration: e.target.value
-                          }))
-                        }
-                        placeholder="01:00:00"
-                        className={`mt-1 ${errors.time_duration ? 'border-red-500' : ''}`}
-                      />
-                      {errors.time_duration && (
-                        <p className="mt-1 text-sm text-red-600">
-                          {errors.time_duration}
-                        </p>
-                      )}
-                    </div>
-                  )}
-
-                  {!isFieldHidden('slurm_options') && (
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Slurm Options (Optional)
-                      </label>
-                      <Textarea
-                        value={formData.slurm_options}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            slurm_options: e.target.value
-                          }))
-                        }
-                        placeholder="Extra Slurm directives or lines to include in the batch script. 
+              {!isFieldHidden('slurm_options') && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Slurm Options (Optional)
+                  </label>
+                  <Textarea
+                    value={formData.slurm_options}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        slurm_options: e.target.value
+                      }))
+                    }
+                    placeholder="Extra Slurm directives or lines to include in the batch script. 
                     e.g., --gpus-per-node=1 or --mem=16G (one per line or space-separated)."
-                        className="mt-1"
-                        rows={3}
-                      />
-                    </div>
-                  )}
+                    className="mt-1"
+                    rows={3}
+                  />
+                </div>
+              )}
 
-                  {!isFieldHidden('task') && (
-                    <div className="md:col-span-2">
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                        Task Command (Optional)
-                      </label>
-                      <Textarea
-                        value={formData.task}
-                        onChange={(e) =>
-                          setFormData((prev) => ({
-                            ...prev,
-                            task: e.target.value
-                          }))
-                        }
-                        placeholder="Enter command to run inside the container"
-                        className="mt-1"
-                        rows={3}
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="rounded-lg border border-sky-200 bg-sky-50 p-3 text-sm text-sky-900 md:col-span-2 dark:border-sky-900/60 dark:bg-sky-950/30 dark:text-sky-100">
-                    LLMFlux manages its own runtime image and will build a
-                    container in your endpoint `diamond_work_dir` when needed.
-                  </div>
-
-                  {/* Input Path */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Input Path *
-                    </label>
-                    <Input
-                      type="text"
-                      value={formData.input_path}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          input_path: e.target.value
-                        }))
-                      }
-                      placeholder="prompts.jsonl"
-                      className={`mt-1 ${errors.input_path ? 'border-red-500' : ''}`}
-                    />
-                    {errors.input_path && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {errors.input_path}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Input Prompts */}
-                  <div className="md:col-span-2">
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Input Prompts
-                    </label>
-                    <Textarea
-                      value={formData.input_content || ''}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          input_content: e.target.value
-                        }))
-                      }
-                      placeholder='{"prompt":"Write a short summary of this paragraph..."}'
-                      className="mt-1"
-                      rows={5}
-                    />
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Hint: Enter prompts in JSONL format (one JSON object per
-                      line). This content will be written to the filename in
-                      Input Path before launch.
-                    </p>
-                  </div>
-
-                  {/* Output Path */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Output Path *
-                    </label>
-                    <Input
-                      type="text"
-                      value={formData.output_path}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          output_path: e.target.value
-                        }))
-                      }
-                      placeholder="results.json"
-                      className={`mt-1 ${errors.output_path ? 'border-red-500' : ''}`}
-                    />
-                    {errors.output_path && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {errors.output_path}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Model */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Model *
-                    </label>
-                    <Input
-                      type="text"
-                      value={formData.model}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          model: e.target.value
-                        }))
-                      }
-                      placeholder="Qwen2.5-3B-Instruct"
-                      className={`mt-1 ${errors.model ? 'border-red-500' : ''}`}
-                    />
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      {`Hint: Model name should be a valid Hugging Face model repo name (e.g. "Qwen2.5-3B-Instruct").`}
-                    </p>
-                    {errors.model && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {errors.model}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Engine */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Engine *
-                    </label>
-                    <select
-                      value={formData.engine || 'vllm'}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          engine: e.target.value as 'vllm' | 'ollama'
-                        }))
-                      }
-                      className={`bg-background mt-1 h-10 w-full rounded-md border px-3 text-sm ${errors.engine ? 'border-red-500' : 'border-input'}`}
-                    >
-                      <option value="vllm">vllm</option>
-                      <option value="ollama">ollama</option>
-                    </select>
-                    {errors.engine && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {errors.engine}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Batch Size */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Batch Size *
-                    </label>
-                    <Input
-                      type="number"
-                      min="1"
-                      value={formData.batch_size}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          batch_size: parseInt(e.target.value, 10) || 1
-                        }))
-                      }
-                      placeholder="4"
-                      className={`mt-1 ${errors.batch_size ? 'border-red-500' : ''}`}
-                    />
-                    {errors.batch_size && (
-                      <p className="mt-1 text-sm text-red-600">
-                        {errors.batch_size}
-                      </p>
-                    )}
-                  </div>
-
-                  {/* Hugging Face Token */}
-                  <div>
-                    <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
-                      Hugging Face Token (Optional)
-                    </label>
-                    <Input
-                      type="password"
-                      value={formData.hf_token}
-                      onChange={(e) =>
-                        setFormData((prev) => ({
-                          ...prev,
-                          hf_token: e.target.value
-                        }))
-                      }
-                      placeholder="hf_..."
-                      className="mt-1"
-                    />
-                    <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                      Required for gated models such as Llama-3.
-                    </p>
-                  </div>
-                </>
+              {!isFieldHidden('task') && (
+                <div className="md:col-span-2">
+                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Task Command (Optional)
+                  </label>
+                  <Textarea
+                    value={formData.task}
+                    onChange={(e) =>
+                      setFormData((prev) => ({
+                        ...prev,
+                        task: e.target.value
+                      }))
+                    }
+                    placeholder="Enter command to run inside the container"
+                    className="mt-1"
+                    rows={3}
+                  />
+                </div>
               )}
 
               {activeCustomFields.length > 0 && (
