@@ -388,12 +388,18 @@ def _apply_task_status_refreshes(globus_compute_client, runtime_record):
 
 
 def refresh_identity_task_statuses(identity_id):
-    globus_compute_client = initialize_globus_compute_client()
     redis_key = f"dtask:{identity_id}:{GET_TASK_STATUS_DTASK_TYPE}"
     runtime_record = g_runtime_redis.get(redis_key)
 
     if runtime_record is None:
         tasks = g_database.load_tasks(identity_id=identity_id)
+        # Build the client only when a task actually needs refreshing:
+        # Client.__init__ does a blocking version-check HTTP call, and this runs
+        # on a 10s poll from three components.
+        if not any(task.task_status not in TERMINAL_STATES for task in tasks):
+            return tasks
+
+        globus_compute_client = initialize_globus_compute_client()
         task_records = _queue_task_status_refreshes(
             globus_compute_client, identity_id, tasks
         )
@@ -404,6 +410,7 @@ def refresh_identity_task_statuses(identity_id):
                 ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
             )
     else:
+        globus_compute_client = initialize_globus_compute_client()
         pending_task_records = _apply_task_status_refreshes(
             globus_compute_client, runtime_record
         )
