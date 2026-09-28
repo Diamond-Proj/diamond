@@ -3,10 +3,10 @@
   "version": "1.0.0",
   "private": true,
   "engines": {
-    "node": "22.x || 24.x",
-    "pnpm": ">=9"
+    "node": "24.x",
+    "pnpm": "12.3.4"
   },
-  "packageManager": "pnpm@10.33.0",
+  "packageManager": "pnpm@12.3.4",
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -15,7 +15,7 @@
     "lint:fix": "eslint --fix",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "format": "prettier --write .",
-    "prepare": "git config core.hooksPath .githooks",
+    "prepare": "if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then git config core.hooksPath .githooks; fi",
     "test": "playwright test",
     "test:interactive": "playwright test --ui",
     "test:report": "playwright show-report"

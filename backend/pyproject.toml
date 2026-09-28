@@ -9,7 +9,7 @@ dependencies = [
     "diamond-hpc==0.0.*",
     "flask==3.1.*",
     "flask-cors==5.0.*",
-    "globus-compute-sdk>=4.15",
+    "globus-compute-sdk==4.16.*",
     "gunicorn==23.0.*",
     "psycopg2-binary==2.9.*",
     "python-dotenv==1.0.*",
@@ -17,6 +17,7 @@ dependencies = [
     "flask-sqlalchemy==3.1.1",
     "elegant-logger==0.0.2",
     "jinja2==3.1.6",
+    "flask-migrate==4.1.*",
 ]
 
 [dependency-groups]
@@ -57,6 +58,9 @@ python_functions = ["test_*"]
 
 [tool.setuptools]
 include-package-data = true
+
+[tool.setuptools.packages.find]
+include = ["diamond_backend*"]
 
 [tool.setuptools.package-data]
 diamond_backend = ["app/data/config/*json", "app/data/template/*json"]
