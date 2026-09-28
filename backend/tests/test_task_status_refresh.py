@@ -7,6 +7,7 @@ there is nothing to refresh is pure waste repeated six times a minute per
 component.
 """
 
+import logging
 import uuid
 from datetime import datetime, timedelta
 from unittest.mock import patch
@@ -224,6 +225,18 @@ def test_api_reports_stale_and_keeps_real_status_for_finished_tasks(
     # A finished job is never relabelled, however old it is.
     assert data[old_done_id]["status"] == "COMPLETED"
     assert data[fresh_id]["status"] == "RUNNING"
+
+
+def test_every_fetch_logs_its_duration(clean_runtime_cache, seeded_tasks, caplog):
+    """One timing line per fetch, on every path."""
+    seeded_tasks("COMPLETED")
+
+    with patch("diamond_backend.app.task_runtime.initialize_globus_compute_client"):
+        with caplog.at_level(logging.INFO, logger="diamond_backend.app.task_runtime"):
+            with app.app_context():
+                refresh_identity_task_statuses(TEST_IDENTITY)
+
+    assert len([m for m in caplog.messages if "task status fetch" in m]) == 1
 
 
 def test_returns_all_tasks_including_terminal_ones(clean_runtime_cache, seeded_tasks):
