@@ -42,7 +42,7 @@ export interface Task {
   task_id: string;
   identity_id: string;
   task_name: string;
-  status: 'COMPLETED' | 'PENDING' | 'RUNNING' | 'FAILED';
+  status: 'COMPLETED' | 'PENDING' | 'RUNNING' | 'FAILED' | 'STALE';
   task_type?: 'default' | 'vllm_chat' | string;
   details: {
     endpoint_id: string;
