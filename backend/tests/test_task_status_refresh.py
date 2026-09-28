@@ -16,6 +16,7 @@ import pytest
 from diamond_backend.app import app, g_database, g_runtime_redis
 from diamond_backend.app.task_runtime import (
     GET_TASK_STATUS_DTASK_TYPE,
+    _endpoint_breaker_key,
     refresh_identity_task_statuses,
 )
 
@@ -23,12 +24,17 @@ TEST_IDENTITY = "TEST_IDENTITY_1"
 
 
 @pytest.fixture
-def clean_runtime_cache():
+def clean_runtime_cache(test_endpoint_anvil):
     """g_runtime_redis is a process-global dict; keep tests independent."""
-    key = f"dtask:{TEST_IDENTITY}:{GET_TASK_STATUS_DTASK_TYPE}"
-    g_runtime_redis.delete(key)
+    keys = [
+        f"dtask:{TEST_IDENTITY}:{GET_TASK_STATUS_DTASK_TYPE}",
+        _endpoint_breaker_key(test_endpoint_anvil[2]),
+    ]
+    for key in keys:
+        g_runtime_redis.delete(key)
     yield
-    g_runtime_redis.delete(key)
+    for key in keys:
+        g_runtime_redis.delete(key)
 
 
 @pytest.fixture
@@ -103,6 +109,61 @@ def test_compute_client_still_built_when_a_task_is_active(
 
     assert mock_client.call_count == 1
     assert mock_queue.call_count == 1
+
+
+def test_submit_failure_trips_breaker_and_it_expires(
+    clean_runtime_cache, seeded_tasks, test_endpoint_anvil
+):
+    """A failing endpoint is suppressed, then retried once the cooldown lapses.
+
+    Without the breaker, a down endpoint means every poll re-submits and fails
+    again -- the submit storm this exists to stop.
+    """
+    endpoint_uuid = test_endpoint_anvil[2]
+    seeded_tasks("RUNNING")
+
+    with patch(
+        "diamond_backend.app.task_runtime.initialize_globus_compute_client"
+    ) as mock_client:
+        with patch(
+            "diamond_backend.app.task_runtime.globus_compute_wrapped_run",
+            side_effect=Exception("endpoint offline"),
+        ) as mock_submit:
+            with app.app_context():
+                refresh_identity_task_statuses(TEST_IDENTITY)
+            assert mock_submit.call_count == 1
+            assert g_runtime_redis.exists(_endpoint_breaker_key(endpoint_uuid))
+
+            # While tripped: no client, no submit -- the poll costs nothing.
+            mock_client.reset_mock()
+            with app.app_context():
+                refresh_identity_task_statuses(TEST_IDENTITY)
+            assert mock_client.call_count == 0
+            assert mock_submit.call_count == 1
+
+            # Once the cooldown lapses we try again: self-healing, no operator step.
+            g_runtime_redis.delete(_endpoint_breaker_key(endpoint_uuid))
+            with app.app_context():
+                refresh_identity_task_statuses(TEST_IDENTITY)
+            assert mock_submit.call_count == 2
+
+
+def test_breaker_short_circuits_remaining_tasks_on_same_endpoint(
+    clean_runtime_cache, seeded_tasks
+):
+    """One failure suppresses the rest of that endpoint's tasks in the same pass."""
+    for _ in range(4):
+        seeded_tasks("RUNNING")
+
+    with patch("diamond_backend.app.task_runtime.initialize_globus_compute_client"):
+        with patch(
+            "diamond_backend.app.task_runtime.globus_compute_wrapped_run",
+            side_effect=Exception("endpoint offline"),
+        ) as mock_submit:
+            with app.app_context():
+                refresh_identity_task_statuses(TEST_IDENTITY)
+
+    assert mock_submit.call_count == 1
 
 
 def test_returns_all_tasks_including_terminal_ones(clean_runtime_cache, seeded_tasks):
