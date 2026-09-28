@@ -8,7 +8,7 @@ component.
 """
 
 import uuid
-from datetime import datetime
+from datetime import datetime, timedelta
 from unittest.mock import patch
 
 import pytest
@@ -19,6 +19,7 @@ from diamond_backend.app.task_runtime import (
     _endpoint_breaker_key,
     refresh_identity_task_statuses,
 )
+from diamond_backend.app.utils.task_status import STALE_AFTER
 
 TEST_IDENTITY = "TEST_IDENTITY_1"
 
@@ -42,8 +43,9 @@ def seeded_tasks(test_db, test_endpoint_anvil):
     """Create tasks for this test and remove them afterwards."""
     created = []
 
-    def _create(task_status):
+    def _create(task_status, age=None):
         task_id = str(uuid.uuid4())
+        create_time = datetime.now() - (age or timedelta(0))
         with app.app_context():
             g_database.save_task(
                 task_id=task_id,
@@ -51,7 +53,7 @@ def seeded_tasks(test_db, test_endpoint_anvil):
                 task_name=f"task-{task_status}",
                 identity_id=TEST_IDENTITY,
                 task_status=task_status,
-                task_create_time=datetime.now(),
+                task_create_time=create_time,
                 log_path=None,
                 stdout_path=None,
                 stderr_path=None,
@@ -111,6 +113,41 @@ def test_compute_client_still_built_when_a_task_is_active(
     assert mock_queue.call_count == 1
 
 
+def test_stale_task_is_never_queried(clean_runtime_cache, seeded_tasks):
+    """A task too old to have ever finished stops costing Globus Compute calls.
+
+    It is still returned to the caller -- the age filter governs polling only,
+    it must not make old tasks vanish from the UI.
+    """
+    stale_id = seeded_tasks("PENDING", age=STALE_AFTER + timedelta(days=1))
+
+    with patch(
+        "diamond_backend.app.task_runtime.initialize_globus_compute_client"
+    ) as mock_client:
+        with app.app_context():
+            tasks = refresh_identity_task_statuses(TEST_IDENTITY)
+
+    assert mock_client.call_count == 0
+    assert stale_id in {task.task_id for task in tasks}
+
+
+def test_recent_unfinished_task_is_still_queried(clean_runtime_cache, seeded_tasks):
+    """The age filter must not suppress tasks that could still report back."""
+    seeded_tasks("PENDING", age=STALE_AFTER - timedelta(days=1))
+
+    with patch(
+        "diamond_backend.app.task_runtime.initialize_globus_compute_client"
+    ) as mock_client:
+        with patch(
+            "diamond_backend.app.task_runtime._queue_task_status_refreshes",
+            return_value=[],
+        ):
+            with app.app_context():
+                refresh_identity_task_statuses(TEST_IDENTITY)
+
+    assert mock_client.call_count == 1
+
+
 def test_submit_failure_trips_breaker_and_it_expires(
     clean_runtime_cache, seeded_tasks, test_endpoint_anvil
 ):
@@ -164,6 +201,29 @@ def test_breaker_short_circuits_remaining_tasks_on_same_endpoint(
                 refresh_identity_task_statuses(TEST_IDENTITY)
 
     assert mock_submit.call_count == 1
+
+
+def test_api_reports_stale_and_keeps_real_status_for_finished_tasks(
+    client, clean_runtime_cache, seeded_tasks
+):
+    """End to end: /api/get_task_status surfaces the derived status."""
+    stale_id = seeded_tasks("PENDING", age=STALE_AFTER + timedelta(days=1))
+    old_done_id = seeded_tasks("COMPLETED", age=STALE_AFTER * 2)
+    fresh_id = seeded_tasks("RUNNING")
+
+    with patch("diamond_backend.app.task_runtime.initialize_globus_compute_client"):
+        with patch(
+            "diamond_backend.app.task_runtime._queue_task_status_refreshes",
+            return_value=[],
+        ):
+            response = client.get("/api/get_task_status")
+
+    assert response.status_code == 200
+    data = response.get_json()
+    assert data[stale_id]["status"] == "STALE"
+    # A finished job is never relabelled, however old it is.
+    assert data[old_done_id]["status"] == "COMPLETED"
+    assert data[fresh_id]["status"] == "RUNNING"
 
 
 def test_returns_all_tasks_including_terminal_ones(clean_runtime_cache, seeded_tasks):
