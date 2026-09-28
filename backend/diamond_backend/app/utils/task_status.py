@@ -13,7 +13,7 @@ STALE_STATUS = "STALE"
 
 # A non-terminal task older than this never reported a final state
 # Stop polling for it after this time.
-STALE_AFTER = timedelta(days=14)
+STALE_AFTER = timedelta(days=4)
 
 
 def normalize_status(raw_status) -> str:
