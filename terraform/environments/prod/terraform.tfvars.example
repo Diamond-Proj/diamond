@@ -1,9 +1,10 @@
 aws_region = "us-east-2"
 
 # Required -- no default on purpose, prod should never silently deploy
-# ":latest". Set these to a specific, already-pushed tag (e.g. a git SHA).
-backend_image  = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-prod-backend:<sha>"
-frontend_image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-prod-frontend:<sha>"
+# ":latest". A tag build-and-push.yml has already pushed to both the shared
+# `backend` and `frontend` ECR repos (<ref>-<sha7>, e.g. v1.4.2-abc1234).
+image_tag = "v1.4.2-abc1234"
+
 
 backend_extra_env = {
   # PORTAL_CLIENT_ID     = ""

@@ -1,18 +1,20 @@
-# Deploy to prod: triggered by pushing a plain release tag (vMAJOR.MINOR.PATCH,
-# e.g. v1.4.2). Pre-releases like v1.4.2-rc1 or v1.4.2-alpha match the
-# workflow's tag glob (GitHub Actions tag filters don't support the +/{}
-# quantifiers needed to exclude them there) but are rejected by the
-# validate-tag job below, so only real releases ever reach prod.
+# Deploy to prod: runs after build-and-push.yml finishes successfully for a
+# plain release tag push (vMAJOR.MINOR.PATCH, e.g. v1.4.2). Pre-releases like
+# v1.4.2-rc1 or v1.4.2-alpha still get built by build-and-push (its tag glob
+# can't exclude them) but are rejected by the validate-tag job below, so only
+# real releases ever reach prod.
 #
-# Unlike staging, every prod deploy rebuilds and pushes both images tagged
-# with the release version -- a release should have a complete, traceable
-# set of images under its version tag, not a partial rebuild.
+# This workflow doesn't build anything itself -- build-and-push.yml already
+# pushed both images to the shared, immutable `backend`/`frontend` ECR repos
+# tagged <tag>-<sha7>; this just applies terraform/environments/prod with
+# that tag. Note workflow_run only fires for workflow files on the default
+# branch, so both files must be on main for this to trigger.
 name: Deploy prod
 
 on:
-  push:
-    tags:
-      - 'v*.*.*'
+  workflow_run:
+    workflows: [build-and-push]
+    types: [completed]
 
 env:
   AWS_REGION: us-east-2
@@ -20,17 +22,25 @@ env:
 
 jobs:
   validate-tag:
+    if: github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push'
     runs-on: ubuntu-latest
     outputs:
       valid: ${{ steps.check.outputs.valid }}
+      image_tag: ${{ steps.check.outputs.image_tag }}
     steps:
       - id: check
+        env:
+          # For a tag push, head_branch is the tag name.
+          REF_NAME: ${{ github.event.workflow_run.head_branch }}
+          HEAD_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
-          if [[ "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+          if [[ "$REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
             echo "valid=true" >> "$GITHUB_OUTPUT"
+            # Must match build-and-push.yml's "${REF}-${GITHUB_SHA::7}".
+            echo "image_tag=${REF_NAME}-${HEAD_SHA::7}" >> "$GITHUB_OUTPUT"
           else
             echo "valid=false" >> "$GITHUB_OUTPUT"
-            echo "::notice::Skipping deploy -- '$GITHUB_REF_NAME' is not a plain vMAJOR.MINOR.PATCH release (pre-releases are not deployed to prod)."
+            echo "::notice::Skipping deploy -- '$REF_NAME' is not a plain vMAJOR.MINOR.PATCH release (pre-releases and branch builds are not deployed to prod)."
           fi
 
   deploy:
@@ -43,6 +53,8 @@ jobs:
       cancel-in-progress: false
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -50,28 +62,10 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - uses: aws-actions/amazon-ecr-login@v2
-
       - uses: hashicorp/setup-terraform@v3
         with:
           terraform_version: "1.15.8"
           terraform_wrapper: false
-
-      - name: Resolve ECR repository URLs
-        id: repos
-        run: |
-          echo "backend=$(aws ecr describe-repositories --repository-names diamond-prod-backend --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
-          echo "frontend=$(aws ecr describe-repositories --repository-names diamond-prod-frontend --query 'repositories[0].repositoryUri' --output text)" >> "$GITHUB_OUTPUT"
-
-      - name: Build & push backend image
-        run: |
-          docker build -t "${{ steps.repos.outputs.backend }}:$GITHUB_REF_NAME" backend
-          docker push "${{ steps.repos.outputs.backend }}:$GITHUB_REF_NAME"
-
-      - name: Build & push frontend image
-        run: |
-          docker build -t "${{ steps.repos.outputs.frontend }}:$GITHUB_REF_NAME" frontend
-          docker push "${{ steps.repos.outputs.frontend }}:$GITHUB_REF_NAME"
 
       - name: Terraform init
         working-directory: ${{ env.TF_DIR }}
@@ -79,7 +73,18 @@ jobs:
 
       - name: Terraform apply
         working-directory: ${{ env.TF_DIR }}
+        env:
+          # Full postgres connection string, passed directly rather than read
+          # from Secrets Manager at container startup (ecsTaskExecutionRole
+          # can't read diamond-* secrets yet). Repo secret, prefixed per
+          # environment (DEV_/STAGING_/PROD_DB_URL).
+          TF_VAR_db_url: ${{ secrets.PROD_DB_URL }}
         run: |
+          # An unset secret comes through as "", which would deploy an empty
+          # SQLALCHEMY_DATABASE_URI -- fail here instead.
+          if [ -z "$TF_VAR_db_url" ]; then
+            echo "::error::PROD_DB_URL repo secret is not set."
+            exit 1
+          fi
           terraform apply -input=false -auto-approve \
-            -var "backend_image=${{ steps.repos.outputs.backend }}:${{ github.ref_name }}" \
-            -var "frontend_image=${{ steps.repos.outputs.frontend }}:${{ github.ref_name }}"
+            -var "image_tag=${{ needs.validate-tag.outputs.image_tag }}"

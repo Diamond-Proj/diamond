@@ -1,5 +1,5 @@
 resource "aws_service_discovery_service" "backend" {
-  name = "${var.name}-backend"
+  name = var.service_discovery_name
 
   dns_config {
     namespace_id = var.service_discovery_namespace_id
@@ -12,6 +12,15 @@ resource "aws_service_discovery_service" "backend" {
 
   health_check_custom_config {
     failure_threshold = 1
+  }
+
+  # Renaming this (or its namespace) replaces it. Create the new one and
+  # repoint the ECS service first, then deregister any leftover instances
+  # so the old one can actually be deleted.
+  force_destroy = true
+
+  lifecycle {
+    create_before_destroy = true
   }
 }
 

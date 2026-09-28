@@ -39,7 +39,14 @@ echo "==> Logging in to ECR and building images tagged '$BRANCH'..."
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${BACKEND_REPO%%/*}"
 docker build -t "$BACKEND_REPO:$BRANCH" "$REPO_ROOT/backend"
 docker push "$BACKEND_REPO:$BRANCH"
-docker build -t "$FRONTEND_REPO:$BRANCH" "$REPO_ROOT/frontend"
+# FLASK_URL is baked into the frontend at build time (Next.js rewrites), so
+# it has to name this branch's own backend -- dev-branch registers it as
+# "dev-<branch>-backend" in dev's shared diamond.local namespace.
+# NEXT_PUBLIC_GLOBUS_CLIENT_ID is passed through from your environment.
+docker build -t "$FRONTEND_REPO:$BRANCH" \
+  --build-arg FLASK_URL="$FLASK_URL" \
+  --build-arg NEXT_PUBLIC_GLOBUS_CLIENT_ID="$NEXT_PUBLIC_GLOBUS_CLIENT_ID" \
+  "$REPO_ROOT/frontend"
 docker push "$FRONTEND_REPO:$BRANCH"
 
 echo "==> Creating database '$DB_NAME' on the shared dev instance (if it doesn't already exist)..."

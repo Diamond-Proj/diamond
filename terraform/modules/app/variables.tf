@@ -63,6 +63,12 @@ variable "frontend_image" {
   type = string
 }
 
+variable "service_discovery_name" {
+  description = "Name this instance's backend registers under in the cluster's private DNS namespace, so the frontend reaches it at <this>.<namespace>:<backend_container_port> (e.g. backend.diamond.local:5328). Must be unique within the namespace -- fine to leave as \"backend\" for the one persistent deploy per environment, but branch environments sharing dev's namespace need their own."
+  type        = string
+  default     = "backend"
+}
+
 variable "backend_container_port" {
   type    = number
   default = 5328

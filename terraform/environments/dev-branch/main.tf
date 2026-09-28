@@ -49,6 +49,9 @@ module "app" {
   ecs_cluster_id                   = data.terraform_remote_state.dev.outputs.ecs_cluster_id
   service_discovery_namespace_id   = data.terraform_remote_state.dev.outputs.service_discovery_namespace_id
   service_discovery_namespace_name = data.terraform_remote_state.dev.outputs.service_discovery_namespace_name
+  # Shares dev's namespace with the persistent deploy (which takes plain
+  # "backend"), so needs a unique name of its own.
+  service_discovery_name = "${local.name}-backend"
 
   rds_security_group_id = data.terraform_remote_state.dev.outputs.rds_security_group_id
   db_url_secret_arn     = aws_secretsmanager_secret.branch_db_url.arn

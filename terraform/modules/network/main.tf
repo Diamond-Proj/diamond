@@ -71,6 +71,14 @@ resource "aws_route_table" "private" {
   }
 
   tags = { Name = "${var.name}-private" }
+
+  # Each environment adds its own route to the shared data VPC as a
+  # standalone aws_route (to_shared_data). Without this, Terraform treats
+  # the inline route list above as authoritative and deletes that peering
+  # route on every subsequent apply, cutting the backend off from RDS.
+  lifecycle {
+    ignore_changes = [route]
+  }
 }
 
 resource "aws_route_table_association" "public" {
