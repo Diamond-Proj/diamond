@@ -29,11 +29,19 @@ output "private_subnet_ids" {
 }
 
 output "backend_ecr_repository_url" {
-  value = module.registry.backend_repository_url
+  value = data.aws_ecr_repository.backend.repository_url
 }
 
 output "frontend_ecr_repository_url" {
-  value = module.registry.frontend_repository_url
+  value = data.aws_ecr_repository.frontend.repository_url
+}
+
+output "backend_image" {
+  value = module.app.backend_image
+}
+
+output "frontend_image" {
+  value = module.app.frontend_image
 }
 
 output "ecs_cluster_id" {

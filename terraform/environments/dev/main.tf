@@ -8,11 +8,30 @@ module "network" {
   vpc_cidr = var.vpc_cidr
 }
 
-# Shared by both the persistent "main" deploy below and every ephemeral
-# branch environment (see ../dev-branch).
-module "registry" {
-  source = "../../modules/registry"
-  name   = local.name
+# Images live in the shared, IMMUTABLE `backend`/`frontend` ECR repos that
+# .github/workflows/build-and-push.yml pushes to for every environment
+# (dev/staging/prod are distinguished by tag, not by repo) -- used by both
+# the persistent deploy below and every branch environment (see
+# ../dev-branch, scripts/dev-up.sh). Managed outside Terraform, so just
+# look them up here.
+data "aws_ecr_repository" "backend" {
+  name = var.backend_repository_name
+}
+
+data "aws_ecr_repository" "frontend" {
+  name = var.frontend_repository_name
+}
+
+# The old per-environment diamond-dev-backend/-frontend repos (formerly
+# module.registry). Forget them without destroying them, so they can be
+# deleted by hand once nothing references them. Safe to remove this block
+# after it's been applied once.
+removed {
+  from = module.registry
+
+  lifecycle {
+    destroy = false
+  }
 }
 
 module "database" {
@@ -78,8 +97,8 @@ module "app" {
   db_url_secret_arn     = module.database.app_db_url_secret_arn
   db_url                = var.db_url
 
-  backend_image  = coalesce(var.backend_image, "${module.registry.backend_repository_url}:latest")
-  frontend_image = coalesce(var.frontend_image, "${module.registry.frontend_repository_url}:latest")
+  backend_image  = "${data.aws_ecr_repository.backend.repository_url}:${var.image_tag}"
+  frontend_image = "${data.aws_ecr_repository.frontend.repository_url}:${var.image_tag}"
 
   backend_extra_env  = var.backend_extra_env
   frontend_extra_env = var.frontend_extra_env

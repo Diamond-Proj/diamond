@@ -8,15 +8,25 @@ variable "vpc_cidr" {
   default = "10.20.0.0/16"
 }
 
-variable "backend_image" {
-  description = "Image for the persistent dev deploy (main branch). Branch environments pass their own images directly, bypassing this."
+variable "image_tag" {
+  description = "Tag to deploy for the persistent dev deploy, from both the backend and frontend repos, as pushed by build-and-push.yml (e.g. main-94d9b3e). Branch environments pass their own images directly, bypassing this. The repos are immutable, so there's no ':latest' to fall back on."
   type        = string
-  default     = ""
+
+  validation {
+    condition     = var.image_tag != "" && var.image_tag != "latest"
+    error_message = "image_tag must be a specific, already-pushed tag (not empty or 'latest')."
+  }
 }
 
-variable "frontend_image" {
+variable "backend_repository_name" {
+  description = "Shared ECR repo for backend images (managed outside Terraform, see build-and-push.yml)."
+  type        = string
+  default     = "backend"
+}
+
+variable "frontend_repository_name" {
   type    = string
-  default = ""
+  default = "frontend"
 }
 
 variable "backend_extra_env" {

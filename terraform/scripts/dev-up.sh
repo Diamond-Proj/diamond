@@ -35,19 +35,42 @@ SUBNET_ID=$(terraform -chdir="$DEV_DIR" output -json private_subnet_ids | python
 DB_ADMIN_TASK_DEF=$(terraform -chdir="$DEV_DIR" output -raw db_admin_task_definition_arn)
 DB_ADMIN_SG=$(terraform -chdir="$DEV_DIR" output -raw db_admin_security_group_id)
 
-echo "==> Logging in to ECR and building images tagged '$BRANCH'..."
+# The shared backend/frontend repos are IMMUTABLE, so a tag can only be
+# pushed once. Tag with the branch slug plus the commit (same shape as
+# build-and-push.yml's <ref>-<sha7>), and skip any image that's already
+# been pushed for this commit -- re-running on the same commit is a no-op,
+# a new commit gets new tags.
+TAG="$BRANCH-$(git -C "$REPO_ROOT" rev-parse --short=7 HEAD)"
+if [ -n "$(git -C "$REPO_ROOT" status --porcelain -- backend frontend)" ]; then
+  echo "WARNING: uncommitted changes under backend/ or frontend/ -- they'll be built into '$TAG' now, but a later run on this commit will skip the build and keep this image." >&2
+fi
+
+image_exists() {
+  aws ecr describe-images --region "$AWS_REGION" --repository-name "${1##*/}" \
+    --image-ids imageTag="$TAG" >/dev/null 2>&1
+}
+
+echo "==> Logging in to ECR and building images tagged '$TAG'..."
 aws ecr get-login-password --region "$AWS_REGION" | docker login --username AWS --password-stdin "${BACKEND_REPO%%/*}"
-docker build -t "$BACKEND_REPO:$BRANCH" "$REPO_ROOT/backend"
-docker push "$BACKEND_REPO:$BRANCH"
-# FLASK_URL is baked into the frontend at build time (Next.js rewrites), so
-# it has to name this branch's own backend -- dev-branch registers it as
-# "dev-<branch>-backend" in dev's shared diamond.local namespace.
-# NEXT_PUBLIC_GLOBUS_CLIENT_ID is passed through from your environment.
-docker build -t "$FRONTEND_REPO:$BRANCH" \
-  --build-arg FLASK_URL="$FLASK_URL" \
-  --build-arg NEXT_PUBLIC_GLOBUS_CLIENT_ID="$NEXT_PUBLIC_GLOBUS_CLIENT_ID" \
-  "$REPO_ROOT/frontend"
-docker push "$FRONTEND_REPO:$BRANCH"
+if image_exists "$BACKEND_REPO"; then
+  echo "    $BACKEND_REPO:$TAG already exists, skipping build"
+else
+  docker build -t "$BACKEND_REPO:$TAG" "$REPO_ROOT/backend"
+  docker push "$BACKEND_REPO:$TAG"
+fi
+if image_exists "$FRONTEND_REPO"; then
+  echo "    $FRONTEND_REPO:$TAG already exists, skipping build"
+else
+  # FLASK_URL is baked into the frontend at build time (Next.js rewrites), so
+  # it has to name this branch's own backend -- dev-branch registers it as
+  # "dev-<branch>-backend" in dev's shared diamond.local namespace.
+  # NEXT_PUBLIC_GLOBUS_CLIENT_ID is passed through from your environment.
+  docker build -t "$FRONTEND_REPO:$TAG" \
+    --build-arg FLASK_URL="$FLASK_URL" \
+    --build-arg NEXT_PUBLIC_GLOBUS_CLIENT_ID="$NEXT_PUBLIC_GLOBUS_CLIENT_ID" \
+    "$REPO_ROOT/frontend"
+  docker push "$FRONTEND_REPO:$TAG"
+fi
 
 echo "==> Creating database '$DB_NAME' on the shared dev instance (if it doesn't already exist)..."
 TASK_ARN=$(aws ecs run-task \
@@ -70,8 +93,8 @@ terraform -chdir="$BRANCH_DIR" init -input=false
 terraform -chdir="$BRANCH_DIR" workspace select "$BRANCH" 2>/dev/null || terraform -chdir="$BRANCH_DIR" workspace new "$BRANCH"
 terraform -chdir="$BRANCH_DIR" apply -input=false \
   -var="branch_name=$BRANCH" \
-  -var="backend_image=$BACKEND_REPO:$BRANCH" \
-  -var="frontend_image=$FRONTEND_REPO:$BRANCH"
+  -var="backend_image=$BACKEND_REPO:$TAG" \
+  -var="frontend_image=$FRONTEND_REPO:$TAG"
 
 echo "==> Done. URL:"
 terraform -chdir="$BRANCH_DIR" output -raw alb_dns_name
