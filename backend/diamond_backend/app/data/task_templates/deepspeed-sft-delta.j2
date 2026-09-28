@@ -1,4 +1,8 @@
 resolved_container_path="{{ container_path | default('', true) }}"
+if [[ -z "$resolved_container_path" ]]; then
+  echo "No container provided: select a container image for the DeepSpeed task" >&2
+  exit 1
+fi
 
 resolved_finetuned_model_path="$(cat <<'DIAMOND_FINETUNED_MODEL_PATH'
 {{ finetuned_model_path }}

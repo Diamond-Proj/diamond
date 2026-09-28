@@ -1,4 +1,8 @@
 resolved_container_path="{{ container_path | default('', true) }}"
+if [[ -z "$resolved_container_path" ]]; then
+  echo "No container provided: select a container image for the vLLM task" >&2
+  exit 1
+fi
 
 cat << EOF > {{ location }}/{{ task_name }}.submit
 #!/bin/bash
