@@ -42,6 +42,7 @@ export function BuilderLogs({
 
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
   const stderrPollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const safetyTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const currentLogTaskIdRef = useRef<string | null>(null);
   const currentStderrLogTaskIdRef = useRef<string | null>(null);
 
@@ -121,7 +122,7 @@ export function BuilderLogs({
       }, 3000);
 
       // Safety timeout after 30 minutes
-      setTimeout(() => {
+      safetyTimeoutRef.current = setTimeout(() => {
         setIsPolling(false);
         if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
         if (stderrPollIntervalRef.current)
@@ -132,9 +133,12 @@ export function BuilderLogs({
     startPolling();
 
     return () => {
+      // The 3s stdout and stderr polls and the 30min safety timeout all outlive
+      // this effect unless cleared here.
       if (pollIntervalRef.current) clearInterval(pollIntervalRef.current);
       if (stderrPollIntervalRef.current)
         clearInterval(stderrPollIntervalRef.current);
+      if (safetyTimeoutRef.current) clearTimeout(safetyTimeoutRef.current);
     };
   }, [isPolling, fetchLogs]);
 
