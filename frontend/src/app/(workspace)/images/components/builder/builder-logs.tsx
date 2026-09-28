@@ -17,6 +17,10 @@ import {
 import { Button } from '@/components/ui/button';
 import { BuildLogResponse } from '@/app/(workspace)/images/types';
 
+// Keep polling while the build is in one of these states; stop on anything
+// else. Listing the stop-states instead would hang on any status added later.
+const IN_PROGRESS_BUILD_STATUSES = ['starting', 'pending', 'running', 'completing'];
+
 interface BuilderLogsProps {
   taskId: string;
   containerName: string;
@@ -78,11 +82,7 @@ export function BuilderLogs({
           setStderrLogs(data.log_content || 'No error logs');
         }
 
-        return (
-          data.status === 'completed' ||
-          data.status === 'failed' ||
-          data.status === 'error'
-        );
+        return !IN_PROGRESS_BUILD_STATUSES.includes(data.status);
       } catch (error) {
         console.error(`Error fetching ${logType} logs:`, error);
         if (logType === 'stdout') {
