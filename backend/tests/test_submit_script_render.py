@@ -348,6 +348,108 @@ def test_render_vllm_template_survives_shellfunction_formatting():
     assert "VLLM_PORT=\\$(( 40000 + 10#\\${SLURM_JOB_ID: -4} ))" in formatted
 
 
+DEEPSPEED_SFT_CONTEXT = {
+    "location": "/tmp",
+    "task_name": "demo-task",
+    "stdout_path": "/tmp/demo.stdout",
+    "stderr_path": "/tmp/demo.stderr",
+    "num_of_nodes": 1,
+    "time_duration": "00:10:00",
+    "partition": "gpu",
+    "account": "proj",
+    "slurm_options": "--gpus-per-node=1",
+    "model_path": "/models/qwen",
+    "dataset_path": "/data/scifact",
+    "reservation": "",
+    "finetuned_model_path": "/finetuned/model/path",
+    "finetuned_model_name": "demo-sft-model",
+}
+
+VLLM_CONTEXT = {
+    "location": "/tmp",
+    "task_name": "vllm-demo",
+    "stdout_path": "/tmp/vllm.stdout",
+    "stderr_path": "/tmp/vllm.stderr",
+    "num_of_nodes": 1,
+    "time_duration": "08:00:00",
+    "partition": "gpu",
+    "account": "proj",
+    "slurm_options": "",
+    "reservation": "",
+    "container_module_command": "",
+    "model_path": "/work/model/path",
+    "served_model_name": "diamond-assistant",
+    "max_model_len": 2048,
+    "vllm_extra_args": "",
+}
+
+
+def _run_outer_script(tmp_path, template_name, context):
+    import subprocess
+
+    location = tmp_path / "diamond"
+    (location / "logs").mkdir(parents=True, exist_ok=True)
+    context = dict(
+        context,
+        location=str(location),
+        stdout_path=str(location / "logs" / "demo.stdout"),
+        stderr_path=str(location / "logs" / "demo.stderr"),
+    )
+    script = render_task_template_script(template_name, context)
+
+    bindir = tmp_path / "bin"
+    bindir.mkdir(exist_ok=True)
+    sbatch_stub = bindir / "sbatch"
+    sbatch_stub.write_text("#!/bin/bash\necho 'Submitted batch job 123'\n")
+    sbatch_stub.chmod(0o755)
+    env = {**os.environ, "PATH": f"{bindir}:{os.environ['PATH']}"}
+    result = subprocess.run(
+        ["bash", "-c", script], env=env, capture_output=True, text=True
+    )
+    return result, location
+
+
+@pytest.mark.parametrize(
+    "template_name,context,submit_name",
+    [
+        ("deepspeed-sft-delta.j2", DEEPSPEED_SFT_CONTEXT, "demo-task.submit"),
+        ("vllm-inference.j2", VLLM_CONTEXT, "vllm-demo.submit"),
+    ],
+)
+@pytest.mark.parametrize("container_path", ["", None])
+def test_container_templates_fail_at_submit_time_without_container(
+    tmp_path, template_name, context, submit_name, container_path
+):
+    result, location = _run_outer_script(
+        tmp_path, template_name, dict(context, container_path=container_path)
+    )
+    assert result.returncode == 1
+    assert "No container provided" in result.stderr
+    assert "Submitted batch job" not in result.stdout
+    assert not (location / submit_name).exists()
+
+
+@pytest.mark.parametrize(
+    "template_name,context,submit_name",
+    [
+        ("deepspeed-sft-delta.j2", DEEPSPEED_SFT_CONTEXT, "demo-task.submit"),
+        ("vllm-inference.j2", VLLM_CONTEXT, "vllm-demo.submit"),
+    ],
+)
+def test_container_templates_embed_selected_container(
+    tmp_path, template_name, context, submit_name
+):
+    result, location = _run_outer_script(
+        tmp_path,
+        template_name,
+        dict(context, container_path="/work/images/custom.sif"),
+    )
+    assert result.returncode == 0, result.stderr
+    submit = (location / submit_name).read_text()
+    assert '"/work/images/custom.sif"' in submit
+    assert '""' not in submit.split("bash <<'DIAMOND_TASK_END'")[0]
+
+
 SAM3_FINETUNE_CONTEXT = {
     "location": "/tmp/diamond",
     "task_name": "sam3-ft-demo",
