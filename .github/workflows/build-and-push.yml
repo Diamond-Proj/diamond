@@ -1,3 +1,22 @@
+# Builds both images for the triggering ref and pushes them to the shared,
+# immutable `backend`/`frontend` ECR repos tagged <ref>-<sha7>, then applies
+# the matching terraform/environments/<env> with that tag:
+#
+#   push a vX.Y.Z tag      -> prod     (pre-releases like v1.2.3-rc1 are built
+#                                       but not deployed)
+#   push to main           -> staging
+#   manual run on a branch -> dev      (the persistent dev deploy -- whoever
+#                                       ran it last is what dev is running)
+#
+# Secrets the deploy job needs:
+#   <ENV>_DB_URL           repo secret, per environment (DEV_/STAGING_/PROD_):
+#                          full postgres connection string
+#   GLOBUS_CLIENT_SECRET   set on each GitHub environment (dev/staging/prod):
+#                          Globus app client secret
+# plus AWS_ACCESS_KEY_ID/AWS_SECRET_ACCESS_KEY, or TF_AWS_ACCESS_KEY_ID/
+# TF_AWS_SECRET_ACCESS_KEY if Terraform should run as a different, broader
+# IAM user than the image push does. Every apply sets the task definitions'
+# env from these, so a missing one would wipe it -- the job fails instead.
 name: build-and-push
 
 on:
@@ -16,6 +35,8 @@ jobs:
       env: ${{ steps.m.outputs.env }}
       ref: ${{ steps.m.outputs.ref }}
       tag: ${{ steps.m.outputs.tag }}
+      deploy: ${{ steps.m.outputs.deploy }}
+      secret_prefix: ${{ steps.m.outputs.secret_prefix }}
     steps:
       - id: m
         run: |
@@ -26,6 +47,15 @@ jobs:
           echo "env=$ENV"                    >> "$GITHUB_OUTPUT"
           echo "ref=$REF"                    >> "$GITHUB_OUTPUT"
           echo "tag=${REF}-${GITHUB_SHA::7}" >> "$GITHUB_OUTPUT"
+          echo "secret_prefix=$(echo "$ENV" | tr '[:lower:]' '[:upper:]')" >> "$GITHUB_OUTPUT"
+          # The tag glob above also matches pre-releases (v1.2.3-rc1); build
+          # those, but only deploy plain vMAJOR.MINOR.PATCH releases to prod.
+          if [[ "$ENV" != "prod" || "$GITHUB_REF_NAME" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "deploy=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "deploy=false" >> "$GITHUB_OUTPUT"
+            echo "::notice::'$GITHUB_REF_NAME' is a pre-release -- building images but not deploying to prod."
+          fi
 
   build:
     needs: meta
@@ -81,3 +111,62 @@ jobs:
         run: |
           STATUS=$([[ "${{ steps.exists.outputs.skip }}" == "true" ]] && echo "already existed" || echo "pushed")
           echo "**${{ matrix.app }}** (${{ needs.meta.outputs.env }}): \`${{ steps.ecr.outputs.registry }}/${{ matrix.app }}:${{ needs.meta.outputs.tag }}\` — $STATUS" >> "$GITHUB_STEP_SUMMARY"
+
+  deploy:
+    needs: [meta, build]
+    if: needs.meta.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    # Required for this job to see the environment's own secrets
+    # (GLOBUS_CLIENT_SECRET).
+    environment: ${{ needs.meta.outputs.env }}
+    concurrency:
+      group: deploy-${{ needs.meta.outputs.env }}
+      cancel-in-progress: false
+    env:
+      TF_DIR: terraform/environments/${{ needs.meta.outputs.env }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.TF_AWS_ACCESS_KEY_ID || secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.TF_AWS_SECRET_ACCESS_KEY || secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Terraform init
+        working-directory: ${{ env.TF_DIR }}
+        run: terraform init -input=false
+
+      - name: Terraform apply
+        working-directory: ${{ env.TF_DIR }}
+        env:
+          PREFIX: ${{ needs.meta.outputs.secret_prefix }}
+          # Full postgres connection string, passed directly rather than read
+          # from Secrets Manager at container startup (ecsTaskExecutionRole
+          # can't read diamond-* secrets yet).
+          TF_VAR_db_url: ${{ secrets[format('{0}_DB_URL', needs.meta.outputs.secret_prefix)] }}
+          GLOBUS_CLIENT_SECRET: ${{ secrets.GLOBUS_CLIENT_SECRET }}
+        run: |
+          # An unset secret comes through as "", which would deploy an empty
+          # value over the working one -- fail here instead.
+          missing=0
+          [ -n "$TF_VAR_db_url" ]        || { echo "::error::${PREFIX}_DB_URL repo secret is not set."; missing=1; }
+          [ -n "$GLOBUS_CLIENT_SECRET" ] || { echo "::error::GLOBUS_CLIENT_SECRET secret is not set on the '${{ needs.meta.outputs.env }}' environment."; missing=1; }
+          [ "$missing" = 0 ] || exit 1
+
+          # Map variable, so it's passed as an HCL/JSON object; jq handles
+          # any quoting in the secret.
+          export TF_VAR_frontend_extra_env="$(jq -nc --arg s "$GLOBUS_CLIENT_SECRET" '{GLOBUS_CLIENT_SECRET: $s}')"
+
+          terraform apply -input=false -auto-approve \
+            -var "image_tag=${{ needs.meta.outputs.tag }}"
+
+      - name: Summary
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          echo "**Deployed** \`${{ needs.meta.outputs.tag }}\` to **${{ needs.meta.outputs.env }}**: $(terraform output -raw alb_dns_name)" >> "$GITHUB_STEP_SUMMARY"
