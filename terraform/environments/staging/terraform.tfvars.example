@@ -1,7 +1,8 @@
 aws_region = "us-east-2"
 
-backend_image  = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-staging-backend:<sha>"
-frontend_image = "123456789012.dkr.ecr.us-east-2.amazonaws.com/diamond-staging-frontend:<sha>"
+# A tag build-and-push.yml has already pushed to both the shared `backend`
+# and `frontend` ECR repos (<ref>-<sha7>, e.g. main-abc1234).
+image_tag = "main-abc1234"
 
 backend_extra_env = {
   # PORTAL_CLIENT_ID     = ""

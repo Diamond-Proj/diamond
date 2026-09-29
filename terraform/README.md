@@ -86,19 +86,25 @@ This destroys that branch's ECS services/ALB and drops its database, freeing the
 
 ## CI/CD
 
-Three workflows in `../.github/workflows/`, one trigger per environment:
+[`build-and-push.yml`](../.github/workflows/build-and-push.yml) builds both images, pushes them to the shared `backend`/`frontend` ECR repos tagged `<ref>-<sha7>`, then applies the matching environment with `image_tag=<ref>-<sha7>`:
 
-| Environment | Trigger | What runs |
+| Environment | Trigger | Notes |
 | --- | --- | --- |
-| `prod` | push a tag matching `vMAJOR.MINOR.PATCH` (e.g. `v1.4.2`) | `build-and-push.yml` builds both images into the shared `backend`/`frontend` ECR repos tagged `<tag>-<sha7>`; when it succeeds, [`deploy-prod.yml`](../.github/workflows/deploy-prod.yml) (via `workflow_run`) rejects anything that isn't a plain release (no `-rc1`/`-alpha` etc.) and applies `environments/prod` with `image_tag=<tag>-<sha7>` |
-| `staging` | push to `main` | [`deploy-staging.yml`](../.github/workflows/deploy-staging.yml) rebuilds+pushes only the image(s) whose path (`backend/**`/`frontend/**`) changed, tagged with the commit SHA; the other container keeps whatever's already applied. Skips entirely if the push touched neither app code nor `terraform/**` |
-| `dev` (a branch) | manual -- [`deploy-dev-branch.yml`](../.github/workflows/deploy-dev-branch.yml) via `workflow_dispatch` | thin wrapper around `scripts/dev-up.sh`, same as running it locally. [`teardown-dev-branch.yml`](../.github/workflows/teardown-dev-branch.yml) wraps `scripts/dev-down.sh` the same way |
+| `prod` | push a tag matching `vMAJOR.MINOR.PATCH` (e.g. `v1.4.2`) | pre-releases (`v1.4.2-rc1` etc.) are built but not deployed |
+| `staging` | push to `main` | |
+| `dev` | manual run (`workflow_dispatch`) on any branch | deploys that branch to the persistent `dev` deploy -- whoever ran it last is what dev is running |
 
-**ECR repos**: prod pulls from the shared `backend`/`frontend` repos (created outside Terraform, `IMMUTABLE` tags) that `build-and-push.yml` pushes to for every environment -- environments are distinguished by tag, not repo. Staging and dev still use their own `diamond-<env>-*` repos from `modules/registry` until they're migrated the same way.
+Per-branch environments are separate: [`deploy-dev-branch.yml`](../.github/workflows/deploy-dev-branch.yml) / [`teardown-dev-branch.yml`](../.github/workflows/teardown-dev-branch.yml) are thin wrappers around `scripts/dev-up.sh` / `scripts/dev-down.sh`, same as running them locally.
 
-The persistent "main" deploy in `dev` itself (as opposed to per-branch environments) isn't wired to any of these -- it's still applied by hand as covered under one-time setup above.
+**ECR repos**: every environment pulls from the shared `backend`/`frontend` repos (created outside Terraform, `IMMUTABLE` tags) -- environments are distinguished by tag, not repo. The frontend's `FLASK_URL` is baked in at build time and is the same everywhere (`http://backend.diamond.local:5328`), so one image can be promoted across environments.
 
-**Required repo secrets**: `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` for an IAM user with permission to push to ECR and manage the VPC/RDS/ECS/ALB/Secrets Manager resources each environment's `terraform apply` touches. It doesn't need to *manage* IAM -- see `bootstrap-iam/` above, the ECS roles it uses are looked up, not created -- but it does need `iam:GetRole` and `iam:PassRole` (scoped to `role/ecsTaskExecutionRole`/`role/ecsTaskRole`, the latter conditioned on `iam:PassedToService = ecs-tasks.amazonaws.com`) or every apply will 403 on those lookups. Consider scoping `prod`'s deploy job behind a GitHub Environment protection rule (required reviewers) given it runs unattended off a tag push.
+**Required secrets** (the deploy job fails rather than applying if any are missing, since each apply overwrites the task definitions' env):
+
+- `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` -- used for the image push, and for Terraform unless `TF_AWS_ACCESS_KEY_ID` / `TF_AWS_SECRET_ACCESS_KEY` are set to a separate, broader user. The Terraform user needs read/write on the state bucket, permission to manage the VPC/ECS/ALB/ACM/Cloud Map (+ its Route 53 private zones)/CloudWatch Logs resources each environment touches, describe on RDS/ECR, read on `diamond-*` Secrets Manager secrets, and `iam:GetRole`/`iam:PassRole` on `role/ecsTask*`. It doesn't need to *manage* IAM -- see `bootstrap-iam/` above.
+- `DEV_DB_URL` / `STAGING_DB_URL` / `PROD_DB_URL` -- full postgres connection string, passed as `TF_VAR_db_url` (see `modules/app`'s `db_url` for why it's not read from Secrets Manager).
+- `GLOBUS_CLIENT_SECRET`, set on each of the `dev` / `staging` / `prod` GitHub environments (not the repo) -- passed via `frontend_extra_env`.
+
+**Required repo variables**: `AWS_REGION`, plus the frontend build args `FLASK_URL` and `NEXT_PUBLIC_GLOBUS_CLIENT_ID`.
 
 ## Custom domains + HTTPS
 

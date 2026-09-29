@@ -8,9 +8,16 @@ module "network" {
   vpc_cidr = var.vpc_cidr
 }
 
-module "registry" {
-  source = "../../modules/registry"
-  name   = local.name
+# Images live in the shared, IMMUTABLE `backend`/`frontend` ECR repos that
+# .github/workflows/build-and-push.yml pushes to for every environment
+# (dev/staging/prod are distinguished by tag, not by repo). Those repos are
+# managed outside Terraform, so just look them up here.
+data "aws_ecr_repository" "backend" {
+  name = var.backend_repository_name
+}
+
+data "aws_ecr_repository" "frontend" {
+  name = var.frontend_repository_name
 }
 
 module "database" {
@@ -60,13 +67,16 @@ module "app" {
 
   rds_security_group_id = module.database.security_group_id
   db_url_secret_arn     = module.database.app_db_url_secret_arn
+  db_url                = var.db_url
 
-  backend_image  = var.backend_image
-  frontend_image = var.frontend_image
+  backend_image  = "${data.aws_ecr_repository.backend.repository_url}:${var.image_tag}"
+  frontend_image = "${data.aws_ecr_repository.frontend.repository_url}:${var.image_tag}"
 
   backend_desired_count  = var.backend_desired_count
   frontend_desired_count = var.frontend_desired_count
 
   backend_extra_env  = var.backend_extra_env
   frontend_extra_env = var.frontend_extra_env
+
+  domain_name = var.domain_name
 }
