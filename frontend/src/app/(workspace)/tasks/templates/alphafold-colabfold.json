@@ -1,0 +1,125 @@
+{
+  "id": "alphafold-colabfold",
+  "taskTemplate": "alphafold-colabfold-delta.j2",
+  "name": "AlphaFold Structure Prediction",
+  "description": "Predict a protein structure or complex with AlphaFold2 (ColabFold) on Delta@NCSA. Paste a sequence or upload a FASTA/A3M, then inspect the 3D model, pLDDT and PAE in the structure viewer.",
+  "category": "Inference",
+  "hiddenFields": ["dataset_id", "task", "container"],
+  "defaults": {
+    "taskName": "alphafold-predict",
+    "num_of_nodes": 1,
+    "time_duration": "01:00:00",
+    "slurm_options": "#SBATCH --gpus-per-node=1\n#SBATCH --cpus-per-task=16\n#SBATCH --mem=64G",
+    "container_path": "/projects/bcrc/hxie6/alphafold/colabfold_1.6.2-cuda12.sif",
+    "weights_dir": "/projects/bcrc/hxie6/alphafold/cache",
+    "num_models": 5,
+    "num_recycle": 3,
+    "model_type": "auto",
+    "msa_mode": "mmseqs2_uniref_env",
+    "relax": "none",
+    "use_templates": "no"
+  },
+  "customFields": [
+    {
+      "key": "sequence_text",
+      "label": "Sequence",
+      "type": "textarea",
+      "placeholder": ">my_protein\nMKTAYIAKQRQISFVKSHFSRQLEERLGLIEVQ...",
+      "requiredUnless": ["sequence_upload", "sequence_path"],
+      "help": "FASTA record or raw amino-acid sequence. Separate the chains of a complex with ':' (CHAIN_A:CHAIN_B). Optional when a file is uploaded or an Input Path is given."
+    },
+    {
+      "key": "sequence_upload",
+      "label": "Upload FASTA / A3M",
+      "type": "file",
+      "accept": ".fasta,.fa,.faa,.a3m,.csv,.txt",
+      "help": "Single file (max 5MB), uploaded to the cluster before the job starts. Takes precedence over the pasted sequence. An .a3m skips the MSA server."
+    },
+    {
+      "key": "sequence_path",
+      "label": "Input Path on Cluster",
+      "placeholder": "inputs/query.fasta or /projects/<proj>/query.fasta",
+      "help": "FASTA/A3M file (or a directory of them) already on Delta. Used only when nothing is pasted or uploaded; relative paths resolve under the Diamond working directory."
+    },
+    {
+      "key": "out_dir",
+      "label": "Output Directory",
+      "placeholder": "Defaults to outputs/<task name> in the Diamond working directory",
+      "help": "ColabFold writes the ranked PDB models, score JSONs and plots here. Relative paths resolve under the Diamond working directory."
+    },
+    {
+      "key": "container_path",
+      "label": "AlphaFold Container (.sif)",
+      "required": true,
+      "help": "ColabFold Apptainer image on the cluster (.sif file or sandbox directory)."
+    },
+    {
+      "key": "weights_dir",
+      "label": "AlphaFold2 Weights Cache",
+      "help": "Directory containing colabfold/params (the AlphaFold2 weights). Leave empty only if the weights were baked into the image."
+    },
+    {
+      "key": "num_models",
+      "label": "Models (1-5)",
+      "type": "number",
+      "placeholder": "5",
+      "required": true,
+      "help": "Fewer models finish faster; 5 gives the best ranking."
+    },
+    {
+      "key": "num_recycle",
+      "label": "Recycles",
+      "type": "number",
+      "placeholder": "3",
+      "required": true,
+      "help": "More recycles can improve accuracy at the cost of runtime."
+    },
+    {
+      "key": "model_type",
+      "label": "Model Type",
+      "optional": [
+        {
+          "label": "auto (ptm for monomers, multimer_v3 for complexes)",
+          "value": "auto"
+        },
+        { "label": "alphafold2_ptm", "value": "alphafold2_ptm" },
+        { "label": "alphafold2_multimer_v3", "value": "alphafold2_multimer_v3" }
+      ]
+    },
+    {
+      "key": "msa_mode",
+      "label": "MSA Mode",
+      "optional": [
+        {
+          "label": "MMseqs2 UniRef + environmental (default)",
+          "value": "mmseqs2_uniref_env"
+        },
+        { "label": "MMseqs2 UniRef only", "value": "mmseqs2_uniref" },
+        {
+          "label": "Single sequence (no MSA: fast, low accuracy)",
+          "value": "single_sequence"
+        }
+      ],
+      "help": "MMseqs2 modes query the public ColabFold MSA server, so the compute node needs outbound internet. Upload an .a3m to skip the server."
+    },
+    {
+      "key": "relax",
+      "label": "Amber Relaxation",
+      "optional": [
+        { "label": "None (unrelaxed models)", "value": "none" },
+        {
+          "label": "Relax the top-ranked model (OpenMM/Amber on GPU)",
+          "value": "amber"
+        }
+      ]
+    },
+    {
+      "key": "use_templates",
+      "label": "Use PDB Templates",
+      "optional": [
+        { "label": "No", "value": "no" },
+        { "label": "Yes (templates from the MSA server)", "value": "yes" }
+      ]
+    }
+  ]
+}

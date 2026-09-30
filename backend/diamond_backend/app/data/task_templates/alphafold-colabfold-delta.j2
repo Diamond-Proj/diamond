@@ -1,0 +1,154 @@
+{#- AlphaFold2 structure prediction with ColabFold on Delta@NCSA.
+
+    Input priority: staged upload (sequence_upload) > pasted text (sequence_text)
+    > path on the cluster (sequence_path). ColabFold accepts FASTA, A3M and CSV.
+    Enumerated options are whitelisted here so a free-text value can never reach
+    the command line; numbers are coerced and clamped. -#}
+{%- set allowed_model_types = ['auto', 'alphafold2_ptm', 'alphafold2_multimer_v3', 'alphafold2_multimer_v2', 'alphafold2_multimer_v1'] -%}
+{%- set allowed_msa_modes = ['mmseqs2_uniref_env', 'mmseqs2_uniref', 'single_sequence'] -%}
+{%- set model_type_value = model_type | default('auto', true) | string | trim -%}
+{%- if model_type_value not in allowed_model_types %}{% set model_type_value = 'auto' %}{% endif -%}
+{%- set msa_mode_value = msa_mode | default('mmseqs2_uniref_env', true) | string | trim -%}
+{%- if msa_mode_value not in allowed_msa_modes %}{% set msa_mode_value = 'mmseqs2_uniref_env' %}{% endif -%}
+{%- set num_models_value = [1, [5, num_models | default(5, true) | int(5)] | min] | max -%}
+{%- set num_recycle_value = [0, [48, num_recycle | default(3, true) | int(3)] | min] | max -%}
+{%- set relax_value = relax | default('none', true) | string | trim | lower -%}
+{%- set use_templates_value = (use_templates | default('no', true) | string | trim | lower) in ['yes', 'true', '1'] -%}
+diamond_resolve_path() {
+  # $1 = raw value, $2 = base dir for relative (non-empty) values.
+  # Trims surrounding whitespace, expands $HOME/$USER/~, and prefixes a
+  # non-empty relative value with the base dir. Empty stays empty.
+  local value="$1" base="$2"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value//\$\{HOME\}/$HOME}"
+  value="${value//\$HOME/$HOME}"
+  value="${value//\$\{USER\}/$USER}"
+  value="${value//\$USER/$USER}"
+  case "$value" in
+    "~") value="$HOME" ;;
+    "~/"*) value="$HOME/${value#\~/}" ;;
+  esac
+  if [[ -n "$value" && "$value" != /* ]]; then
+    value="$base/$value"
+  fi
+  printf '%s' "$value"
+}
+
+raw_out_dir="$(cat <<'DIAMOND_OUT_DIR'
+{{ out_dir | default('', true) }}
+DIAMOND_OUT_DIR
+)"
+resolved_out_dir="$(diamond_resolve_path "$raw_out_dir" "{{ location }}")"
+if [[ -z "$resolved_out_dir" ]]; then
+  resolved_out_dir="{{ location }}/outputs/{{ task_name }}"
+fi
+
+raw_weights_dir="$(cat <<'DIAMOND_WEIGHTS_DIR'
+{{ weights_dir | default('', true) }}
+DIAMOND_WEIGHTS_DIR
+)"
+resolved_weights_dir="$(diamond_resolve_path "$raw_weights_dir" "{{ location }}")"
+
+# 1. A staged upload wins over everything else.
+resolved_input_path="{{ sequence_upload | default('', true) }}"
+
+# 2. Pasted text is written to <out_dir>/input/query.fasta. A raw sequence
+#    (no '>' header) gets a header named after the task; whitespace inside a
+#    raw sequence is dropped so multi-line pastes work. Chains of a complex are
+#    separated with ':' as ColabFold expects.
+if [[ -z "$resolved_input_path" ]]; then
+  raw_sequence_text="$(cat <<'DIAMOND_SEQUENCE_TEXT'
+{{ sequence_text | default('', true) }}
+DIAMOND_SEQUENCE_TEXT
+)"
+  if [[ -n "${raw_sequence_text//[[:space:]]/}" ]]; then
+    fasta_header="$(cat <<'DIAMOND_FASTA_HEADER'
+{{ task_name }}
+DIAMOND_FASTA_HEADER
+)"
+    mkdir -p "$resolved_out_dir/input"
+    resolved_input_path="$resolved_out_dir/input/query.fasta"
+    if [[ "$raw_sequence_text" == ">"* ]]; then
+      printf '%s\n' "$raw_sequence_text" > "$resolved_input_path"
+    else
+      {
+        printf '>%s\n' "$fasta_header"
+        printf '%s' "$raw_sequence_text" | tr -d '[:space:]'
+        printf '\n'
+      } > "$resolved_input_path"
+    fi
+  fi
+fi
+
+# 3. Otherwise use a FASTA/A3M file (or directory of them) already on the cluster.
+if [[ -z "$resolved_input_path" ]]; then
+  raw_sequence_path="$(cat <<'DIAMOND_SEQUENCE_PATH'
+{{ sequence_path | default('', true) }}
+DIAMOND_SEQUENCE_PATH
+)"
+  resolved_input_path="$(diamond_resolve_path "$raw_sequence_path" "{{ location }}")"
+fi
+
+if [[ -z "$resolved_input_path" ]]; then
+  echo "No sequence provided: paste a sequence, upload a FASTA/A3M file, or set Input Path" >&2
+  exit 1
+fi
+
+input_dir="$(dirname "$resolved_input_path")"
+input_file="$(basename "$resolved_input_path")"
+
+# The AlphaFold2 weights live under <weights_dir>/colabfold/params. Binding the
+# directory to /cache matches the image's XDG_CACHE_HOME, so the same layout
+# works when the weights were baked into the image instead (leave weights_dir
+# empty in that case).
+weights_bind=""
+if [[ -n "$resolved_weights_dir" ]]; then
+  weights_bind="-B \"$resolved_weights_dir\":/cache"
+fi
+
+mkdir -p "$resolved_out_dir"
+
+cat << EOF > {{ location }}/{{ task_name }}.submit
+#!/bin/bash
+
+#SBATCH --job-name={{ task_name }}
+#SBATCH --output={{ stdout_path }}
+#SBATCH --error={{ stderr_path }}
+#SBATCH --nodes={{ num_of_nodes }}
+#SBATCH --time={{ time_duration }}
+#SBATCH --partition={{ partition }}
+#SBATCH --account={{ account }}
+#SBATCH --ntasks-per-node=1
+{{ slurm_options }}
+
+export MPLBACKEND=Agg
+
+apptainer exec --nv \
+  -B /projects:/projects \
+  -B /work:/work \
+  -B "$input_dir":/diamond_input \
+  -B "$resolved_out_dir":/diamond_output \
+  $weights_bind \
+  "{{ container_path or '/projects/bcrc/hxie6/alphafold/colabfold_1.6.2-cuda12.sif' }}" \
+  colabfold_batch \
+    --data /cache/colabfold \
+    --num-models {{ num_models_value }} \
+    --num-recycle {{ num_recycle_value }} \
+    --model-type {{ model_type_value }} \
+    --msa-mode {{ msa_mode_value }} \
+{%- if use_templates_value %}
+    --templates \
+{%- endif %}
+{%- if relax_value == 'amber' %}
+    --amber --use-gpu-relax --num-relax 1 \
+{%- endif %}
+    "/diamond_input/$input_file" /diamond_output
+EOF
+
+sbatch {{ reservation }} {{ location }}/{{ task_name }}.submit
+sbatch_rc=$?
+if [[ $sbatch_rc -eq 0 ]]; then
+  echo "DIAMOND_ARTIFACT_PATH=$resolved_out_dir"
+fi
+exit $sbatch_rc

@@ -25,12 +25,14 @@ export interface TemplateCustomField {
   label?: string;
   placeholder?: string;
   required?: boolean;
-  /** Required only when the referenced field is empty (e.g. image_path unless image_upload). */
-  requiredUnless?: string;
+  /** Required only when every referenced field is empty (e.g. image_path
+   *  unless image_upload; sequence_text unless sequence_upload or input_path). */
+  requiredUnless?: string | string[];
   /** 'file' renders an upload input; the file is stored base64-encoded under `key`
    *  and its sanitized name under `${key}_filename`. 'number' renders a numeric
-   *  input validated as a positive integer. Defaults to a text input. */
-  type?: 'text' | 'file' | 'number';
+   *  input validated as a positive integer. 'textarea' renders a multi-line
+   *  monospace input spanning the full row. Defaults to a text input. */
+  type?: 'text' | 'file' | 'number' | 'textarea';
   /** Accept attribute for file inputs, e.g. "image/*". */
   accept?: string;
   /** Hint text rendered under the field. */
@@ -43,7 +45,7 @@ export interface Task {
   identity_id: string;
   task_name: string;
   status: 'COMPLETED' | 'PENDING' | 'RUNNING' | 'FAILED';
-  task_type?: 'default' | 'vllm_chat' | string;
+  task_type?: 'default' | 'vllm_chat' | 'alphafold' | string;
   details: {
     endpoint_id: string;
     endpoint_name?: string;
@@ -55,6 +57,9 @@ export interface Task {
   chat?: {
     port?: number | null;
     model?: string | null;
+  } | null;
+  alphafold?: {
+    pipeline?: string | null;
   } | null;
 }
 
