@@ -36,4 +36,4 @@ COPY --from=builder /app/next.config.ts ./
 
 EXPOSE 3000
 
-CMD ["next", "start"]
+CMD ["node", "node_modules/next/dist/bin/next", "start"]
