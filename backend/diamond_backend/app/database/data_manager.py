@@ -10,6 +10,8 @@ from diamond_backend.app.database.db import MIGRATIONS_DIR, db, migrate
 from diamond_backend.app.database.models.container import Container
 from diamond_backend.app.database.models.dataset import Dataset
 from diamond_backend.app.database.models.endpoints import Endpoints
+from diamond_backend.app.database.models.flow import Flows  # noqa: F401
+from diamond_backend.app.database.models.function import Functions  # noqa: F401
 from diamond_backend.app.database.models.profile import Profile  # noqa: F401
 from diamond_backend.app.database.models.task import Task
 from diamond_backend.app.errors import EndpointNotFound
@@ -115,8 +117,18 @@ class Database:
         db.session.commit()
 
     def get_task_status(self, task_id):
-        logger.info(f"Getting task status: {task_id}")
         return Task.query.filter_by(task_id=task_id).first().task_status
+
+    def update_task_id(self, task_id, new_task_id):
+        logger.info(f"Updating task id: {task_id}, {new_task_id}")
+        task = Task.query.filter_by(task_id=task_id).first()
+        if task:
+            task.task_id = new_task_id
+            task.batch_job_id = new_task_id
+            db.session.commit()
+        else:
+            # logger.error(f"Task {task_id} not found")
+            raise TaskNotFoundError(task_id=task_id)
 
     def update_task_status(self, task_id, task_status):
         logger.info(f"Updating task status: {task_id}, {task_status}")
@@ -128,13 +140,29 @@ class Database:
             # logger.error(f"Task {task_id} not found")
             raise TaskNotFoundError(task_id=task_id)
 
-    def load_tasks(self, identity_id) -> list[Task]:
+    def update_task_checkpoint_path(self, task_id, checkpoint_path):
+        logger.info(f"Updating task checkpoint path: {task_id}, {checkpoint_path}")
+        task = Task.query.filter_by(task_id=task_id).first()
+        if task:
+            task.checkpoint_path = checkpoint_path
+            db.session.commit()
+        else:
+            raise TaskNotFoundError(task_id=task_id)
+
+    def load_tasks(self, identity_id, status=None) -> list[Task]:
         logger.info(f"Loading task data for identity_id: {identity_id}")
-        return (
-            Task.query.filter_by(identity_id=identity_id)
-            .order_by(Task.task_create_time.desc())
-            .all()
-        )
+        if status:
+            return (
+                Task.query.filter_by(identity_id=identity_id, task_status=status)
+                .order_by(Task.task_create_time.desc())
+                .all()
+            )
+        else:
+            return (
+                Task.query.filter_by(identity_id=identity_id)
+                .order_by(Task.task_create_time.desc())
+                .all()
+            )
 
     def get_task(self, task_id: str, identity_id: str | None = None) -> Task | None:
         logger.info(f"Loading task by id: {task_id}")
