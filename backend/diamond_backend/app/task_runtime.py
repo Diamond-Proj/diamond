@@ -1,4 +1,5 @@
 import logging
+import os
 import re
 import time
 from datetime import datetime
@@ -17,12 +18,18 @@ from diamond_backend.app.utils.functions import (
     stage_base64_file,
 )
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
+from diamond_backend.app.utils.task_status import is_stale, is_terminal
 
 logger = logging.getLogger(__name__)
 
 GET_TASK_STATUS_DTASK_TYPE = "fetch_task_status"
 GET_TASK_STATUS_REDIS_TTL_SECONDS = 30
 SBATCH_JOB_ID_PATTERN = re.compile(r"Submitted batch job (\d+)")
+
+# Cooldown before retrying an endpoint whose status submit failed. Kept short
+# because the breaker is the only thing that notices an endpoint coming back:
+# a longer cooldown means a longer frozen UI after recovery.
+ENDPOINT_DOWN_TTL_SECONDS = max(30, int(os.getenv("ENDPOINT_DOWN_TTL_SECONDS", "60")))
 
 SLURM_STATE_MAPPING = {
     "COMPLETING": "COMPLETED",
@@ -35,8 +42,6 @@ SLURM_STATE_MAPPING = {
     "RUNNING": "RUNNING",
     "PENDING": "PENDING",
 }
-
-TERMINAL_STATES = ["COMPLETED", "COMPLETING", "FAILED", "MISSING"]
 
 
 class TaskSubmissionError(Exception):
@@ -283,14 +288,56 @@ def submit_batch_script_task(
     }
 
 
+def _endpoint_breaker_key(endpoint_id):
+    return f"epstate:down:{endpoint_id}"
+
+
+def _endpoint_is_pollable(endpoint_id):
+    """Whether we should submit a status probe to this endpoint right now.
+
+    Evidence-based on purpose: the breaker trips only when a submit actually
+    fails, and self-heals when the key expires. It deliberately does not consult
+    Endpoints.endpoint_status, which is only written by an explicit
+    POST /api/register_all_endpoints -- a stale "offline" there would suppress a
+    healthy endpoint with nothing to ever clear it.
+    """
+    if not endpoint_id:
+        return False
+    return not g_runtime_redis.exists(_endpoint_breaker_key(endpoint_id))
+
+
+def _trip_endpoint_breaker(endpoint_id):
+    g_runtime_redis.set(
+        _endpoint_breaker_key(endpoint_id),
+        True,
+        ttl_seconds=ENDPOINT_DOWN_TTL_SECONDS,
+    )
+
+
+def refreshable_tasks(tasks):
+    """Tasks worth a Globus Compute round trip right now."""
+    return [
+        task
+        for task in tasks
+        if not is_terminal(task.task_status)
+        and not is_stale(task)
+        and _endpoint_is_pollable(task.compute_endpoint_id)
+    ]
+
+
 def _queue_task_status_refreshes(globus_compute_client, identity_id, tasks):
-    filtered_tasks = [task for task in tasks if task.task_status not in TERMINAL_STATES]
+    filtered_tasks = refreshable_tasks(tasks)
     if not filtered_tasks:
         return []
 
     task_status_func_id = globus_compute_client.register_function(fetch_task_status)
     task_records = []
     for task in filtered_tasks:
+        # Re-checked per task: a failure earlier in this loop trips the breaker,
+        # so the rest of that endpoint's tasks skip their doomed submit.
+        if not _endpoint_is_pollable(task.compute_endpoint_id):
+            continue
+
         user_endpoint_config = g_database.get_endpoint_user_config(
             identity_id=identity_id, endpoint_uuid=task.compute_endpoint_id
         )
@@ -303,9 +350,13 @@ def _queue_task_status_refreshes(globus_compute_client, identity_id, tasks):
                 kwargs={"batch_job_id": task.batch_job_id},
             )
         except Exception as exc:
+            _trip_endpoint_breaker(task.compute_endpoint_id)
             logger.warning(
-                "Failed to submit fetch_task_status for task %s. Error: %s",
+                "Failed to submit fetch_task_status for task %s; pausing endpoint "
+                "%s for %ss. Error: %s",
                 task.task_id,
+                task.compute_endpoint_id,
+                ENDPOINT_DOWN_TTL_SECONDS,
                 exc,
             )
             continue
@@ -388,35 +439,50 @@ def _apply_task_status_refreshes(globus_compute_client, runtime_record):
 
 
 def refresh_identity_task_statuses(identity_id):
-    globus_compute_client = initialize_globus_compute_client()
-    redis_key = f"dtask:{identity_id}:{GET_TASK_STATUS_DTASK_TYPE}"
-    runtime_record = g_runtime_redis.get(redis_key)
+    started = time.monotonic()
+    try:
+        redis_key = f"dtask:{identity_id}:{GET_TASK_STATUS_DTASK_TYPE}"
+        runtime_record = g_runtime_redis.get(redis_key)
 
-    if runtime_record is None:
-        tasks = g_database.load_tasks(identity_id=identity_id)
-        task_records = _queue_task_status_refreshes(
-            globus_compute_client, identity_id, tasks
-        )
-        if task_records:
-            g_runtime_redis.set(
-                redis_key,
-                task_records,
-                ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
+        if runtime_record is None:
+            tasks = g_database.load_tasks(identity_id=identity_id)
+            # Build the client only when something needs refreshing:
+            # Client.__init__ makes a blocking version-check HTTP call, and this
+            # runs on a 10s poll.
+            if not refreshable_tasks(tasks):
+                return tasks
+
+            globus_compute_client = initialize_globus_compute_client()
+            task_records = _queue_task_status_refreshes(
+                globus_compute_client, identity_id, tasks
             )
-    else:
-        pending_task_records = _apply_task_status_refreshes(
-            globus_compute_client, runtime_record
-        )
-        if pending_task_records:
-            g_runtime_redis.set(
-                redis_key,
-                pending_task_records,
-                ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
-            )
+            if task_records:
+                g_runtime_redis.set(
+                    redis_key,
+                    task_records,
+                    ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
+                )
         else:
-            g_runtime_redis.delete(redis_key)
+            globus_compute_client = initialize_globus_compute_client()
+            pending_task_records = _apply_task_status_refreshes(
+                globus_compute_client, runtime_record
+            )
+            if pending_task_records:
+                g_runtime_redis.set(
+                    redis_key,
+                    pending_task_records,
+                    ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
+                )
+            else:
+                g_runtime_redis.delete(redis_key)
 
-    return g_database.load_tasks(identity_id=identity_id)
+        return g_database.load_tasks(identity_id=identity_id)
+    finally:
+        logger.info(
+            "task status fetch for %s took %.1fms",
+            identity_id,
+            (time.monotonic() - started) * 1000,
+        )
 
 
 def read_remote_task_log(

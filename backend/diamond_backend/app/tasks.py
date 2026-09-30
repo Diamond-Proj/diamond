@@ -782,7 +782,7 @@ def diamond_get_task_status():
             "task_id": task.task_id,
             "identity_id": task.identity_id,
             "task_name": task.task_name,
-            "status": task.task_status,
+            "status": task.status,
             "task_type": task_type,
             "details": {
                 "endpoint_id": task.compute_endpoint_id or "N/A",
