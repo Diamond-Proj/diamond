@@ -53,7 +53,7 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 apptainer run --nv \
   -B /projects:/projects \
   -B /work:/work \
-  "{{ container_path or '/projects/bcrc/hxie6/sam3_ft/sam3lung.sif' }}" \
+  "{{ container_path or '/projects/bccu/diamond/sam3.sif' }}" \
   finetune \
     --model "{{ base_model_path }}" \
     --dataset "{{ dataset_path }}" \

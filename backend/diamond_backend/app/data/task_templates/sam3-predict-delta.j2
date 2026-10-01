@@ -71,7 +71,7 @@ apptainer run --nv \
   -B /work:/work \
   -B "$image_dir":/diamond_input \
   -B "$resolved_out_dir":/diamond_output \
-  "{{ container_path or '/projects/bcrc/hxie6/sam3_ft/sam3lung.sif' }}" \
+  "{{ container_path or '/projects/bccu/diamond/sam3.sif' }}" \
   predict \
     --model "{{ model_path }}" \
     --image "/diamond_input/$image_file" \

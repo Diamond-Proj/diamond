@@ -374,7 +374,7 @@ def test_render_sam3_finetune_template_script():
         "sam3-finetune-delta.j2", dict(SAM3_FINETUNE_CONTEXT)
     )
     assert "sam3-ft-demo.submit" in script
-    assert "/projects/bcrc/hxie6/sam3_ft/sam3lung.sif" in script
+    assert "/projects/bccu/diamond/sam3.sif" in script
     assert '--model "/projects/sam3/sam3.pt"' in script
     assert '--dataset "/projects/sam3/data/montgomery_extracted"' in script
     assert '--output "$resolved_artifact_path"' in script
@@ -392,7 +392,7 @@ def test_render_sam3_finetune_template_prefers_selected_container():
     context = dict(SAM3_FINETUNE_CONTEXT, container_path="/work/images/custom.sif")
     script = render_task_template_script("sam3-finetune-delta.j2", context)
     assert "/work/images/custom.sif" in script
-    assert "/projects/bcrc/hxie6/sam3_ft/sam3lung.sif" not in script
+    assert "/projects/bccu/diamond/sam3.sif" not in script
 
 
 SAM3_PREDICT_CONTEXT = {
