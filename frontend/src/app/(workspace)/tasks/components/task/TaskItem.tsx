@@ -8,6 +8,7 @@ import {
   Loader2,
   Copy,
   Check,
+  Dna,
   MessageSquare,
   FolderOpen,
   Download,
@@ -78,6 +79,7 @@ export default function TaskItem({
   const logPollingRef = useRef<NodeJS.Timeout | null>(null);
   const isVllmChatTask = task.task_type === 'vllm_chat';
   const isVllmChatReady = Boolean(isVllmChatTask && task.status === 'RUNNING');
+  const isAlphafoldTask = task.task_type === 'alphafold';
   const canBrowseOutputFiles = Boolean(
     task.artifact_path && !isVllmChatTask && task.status === 'COMPLETED'
   );
@@ -336,7 +338,8 @@ export default function TaskItem({
             {(task.result ||
               task.error ||
               task.artifact_path ||
-              isVllmChatTask) && (
+              isVllmChatTask ||
+              isAlphafoldTask) && (
               <div className="border-t border-slate-200/70 pt-4 dark:border-slate-700/70">
                 <div className="space-y-3">
                   <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 dark:border-slate-700/70 dark:bg-slate-800/50">
@@ -404,6 +407,36 @@ export default function TaskItem({
                           <Button size="sm" variant="secondary" disabled>
                             <Loader2 className="mr-1 h-3.5 w-3.5" />
                             Waiting For RUNNING
+                          </Button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+
+                  {isAlphafoldTask && (
+                    <div className="rounded-lg border border-slate-200/70 bg-slate-50/70 p-3 dark:border-slate-700/70 dark:bg-slate-800/50">
+                      <span className="block text-xs font-medium tracking-wide text-slate-500 uppercase dark:text-slate-400">
+                        Structure Prediction
+                      </span>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 dark:border-slate-700 dark:bg-slate-900/70 dark:text-slate-200">
+                          AlphaFold2 · {task.alphafold?.pipeline || 'colabfold'}
+                        </span>
+                        {task.artifact_path ? (
+                          <Button size="sm" asChild className="cursor-pointer">
+                            <Link
+                              href={`/tasks/alphafold/${encodeURIComponent(task.task_id)}`}
+                            >
+                              <Dna className="mr-1 h-3.5 w-3.5" />
+                              {task.status === 'COMPLETED'
+                                ? 'Open Structure Viewer'
+                                : 'Open Structure Viewer (in progress)'}
+                            </Link>
+                          </Button>
+                        ) : (
+                          <Button size="sm" variant="secondary" disabled>
+                            <Loader2 className="mr-1 h-3.5 w-3.5" />
+                            Waiting for output directory
                           </Button>
                         )}
                       </div>

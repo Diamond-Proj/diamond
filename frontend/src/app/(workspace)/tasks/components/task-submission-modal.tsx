@@ -500,14 +500,18 @@ export function TaskSubmissionModal({
         }
       }
       if (field.requiredUnless && !value) {
-        const other = String(formData[field.requiredUnless] ?? '').trim();
-        if (!other) {
-          const otherField = activeCustomFields.find(
-            (f) => f.key === field.requiredUnless
+        const alternatives = Array.isArray(field.requiredUnless)
+          ? field.requiredUnless
+          : [field.requiredUnless];
+        const satisfied = alternatives.some(
+          (key) => String(formData[key] ?? '').trim() !== ''
+        );
+        if (!satisfied) {
+          const alternativeLabels = alternatives.map(
+            (key) => activeCustomFields.find((f) => f.key === key)?.label || key
           );
-          newErrors[field.key] = `Provide ${field.label || field.key} or ${
-            otherField?.label || field.requiredUnless
-          }`;
+          newErrors[field.key] =
+            `Provide ${field.label || field.key} or ${alternativeLabels.join(' / ')}`;
         }
       }
     });
@@ -1126,12 +1130,35 @@ export function TaskSubmissionModal({
                       const fieldOptions = resolveCustomFieldOptions(field);
 
                       return (
-                        <div key={field.key}>
+                        <div
+                          key={field.key}
+                          className={
+                            field.type === 'textarea'
+                              ? 'md:col-span-2'
+                              : undefined
+                          }
+                        >
                           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300">
                             {field.label || field.key}
                             {field.required ? ' *' : ''}
                           </label>
-                          {field.type === 'file' ? (
+                          {field.type === 'textarea' ? (
+                            <Textarea
+                              value={String(formData[field.key] ?? '')}
+                              onChange={(e) =>
+                                setFormData((prev) => ({
+                                  ...prev,
+                                  [field.key]: e.target.value
+                                }))
+                              }
+                              placeholder={
+                                field.placeholder ||
+                                `Enter ${field.label || field.key}`
+                              }
+                              rows={4}
+                              className={`mt-1 font-mono text-xs ${errors[field.key] ? 'border-red-500' : ''}`}
+                            />
+                          ) : field.type === 'file' ? (
                             <>
                               <input
                                 ref={(el) => {

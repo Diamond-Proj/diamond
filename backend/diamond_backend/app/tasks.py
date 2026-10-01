@@ -76,6 +76,10 @@ def _resolve_artifact_mimetype(filename):
 
 ARTIFACT_PATH_MARKER_PATTERN = re.compile(r"^DIAMOND_ARTIFACT_PATH=(.+)$", re.MULTILINE)
 VLLM_TASK_LOG_PREFIX = "vllm_task|"
+ALPHAFOLD_TASK_LOG_PREFIX = "alphafold_task|"
+# Task templates whose submissions are tagged as AlphaFold runs so the frontend
+# can offer the structure viewer. Maps template file -> pipeline label.
+ALPHAFOLD_TASK_TEMPLATES = {"alphafold-colabfold-delta.j2": "colabfold"}
 VLLM_READY_STATES = {"PENDING", "RUNNING", "COMPLETING"}
 VLLM_OPTIONAL_CHAT_FIELDS = (
     "temperature",
@@ -230,6 +234,20 @@ def _parse_vllm_task_log_info(log_path):
 def _build_vllm_task_log_info(model):
     normalized_model = str(model or "").strip() or "diamond-assistant"
     return f"{VLLM_TASK_LOG_PREFIX}model={normalized_model}"
+
+
+def _parse_alphafold_task_log_info(log_path):
+    parsed_values = _parse_delimited_key_value_string(
+        log_path, ALPHAFOLD_TASK_LOG_PREFIX
+    )
+    if parsed_values is None:
+        return None
+    return {"pipeline": parsed_values.get("pipeline", "").strip()}
+
+
+def _build_alphafold_task_log_info(pipeline):
+    normalized_pipeline = str(pipeline or "").strip() or "colabfold"
+    return f"{ALPHAFOLD_TASK_LOG_PREFIX}pipeline={normalized_pipeline}"
 
 
 def _derive_vllm_port_from_batch_job_id(batch_job_id):
@@ -570,10 +588,15 @@ def diamond_endpoint_submit_job():
         finetuned_model_path=finetuned_model_path,
         finetuned_model_name=finetuned_model_name,
     )
-    vllm_task_log_info = None
-    if str(task_template_name or "").strip() == "vllm-inference.j2":
-        vllm_task_log_info = _build_vllm_task_log_info(
+    normalized_template_name = str(task_template_name or "").strip()
+    task_log_info = None
+    if normalized_template_name == "vllm-inference.j2":
+        task_log_info = _build_vllm_task_log_info(
             pick_field("served_model_name", default="diamond-assistant")
+        )
+    elif normalized_template_name in ALPHAFOLD_TASK_TEMPLATES:
+        task_log_info = _build_alphafold_task_log_info(
+            ALPHAFOLD_TASK_TEMPLATES[normalized_template_name]
         )
 
     if not endpoint_id:
@@ -720,7 +743,7 @@ def diamond_endpoint_submit_job():
             submit_script=submit_task_script,
             stdout_path=stdout_path,
             stderr_path=stderr_path,
-            log_path=vllm_task_log_info,
+            log_path=task_log_info,
             checkpoint_path=artifact_path,
             checkpoint_path_extractor=_extract_artifact_path_from_submit_stdout,
         )
@@ -747,8 +770,14 @@ def diamond_get_task_status():
     tasks_data = {}
     for task in updated_tasks:
         vllm_task_info = _parse_vllm_task_log_info(task.log_path)
+        alphafold_task_info = _parse_alphafold_task_log_info(task.log_path)
         vllm_port = _derive_vllm_port_from_batch_job_id(task.batch_job_id)
-        task_type = "vllm_chat" if vllm_task_info else "default"
+        if vllm_task_info:
+            task_type = "vllm_chat"
+        elif alphafold_task_info:
+            task_type = "alphafold"
+        else:
+            task_type = "default"
         tasks_data[task.task_id] = {
             "task_id": task.task_id,
             "identity_id": task.identity_id,
@@ -770,6 +799,7 @@ def diamond_get_task_status():
                 if vllm_task_info
                 else None
             ),
+            "alphafold": alphafold_task_info,
         }
 
     logger.debug(f"Updated task status response: {tasks_data}")
