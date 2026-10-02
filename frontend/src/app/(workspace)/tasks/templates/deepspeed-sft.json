@@ -20,7 +20,7 @@
       "optional": [
         {
           "label": "Qwen3-0.6B",
-          "value": "/work/nvme/bcrc/hxie6/model/Qwen3-0.6B"
+          "value": "/work/nvme/bccu/diamond/Qwen3-0.6B/"
         }
       ]
     },
@@ -30,14 +30,14 @@
       "optional": [
         {
           "label": "diamond-knowledge",
-          "value": "/work/nvme/bcrc/hxie6/diamond_sft/diamond-knowledge"
+          "value": "/work/nvme/bccu/diamond/diamond-knowledge/"
         }
       ]
     },
     {
       "key": "finetuned_model_path",
       "label": "Output Directory",
-      "placeholder": "/work/nvme/bcrc/hxie6/output",
+      "placeholder": "/work/nvme/bccu/hxie6/output",
       "required": true
     },
     {
