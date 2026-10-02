@@ -1,3 +1,9 @@
+resolved_container_path="{{ container_path | default('', true) }}"
+if [[ -z "$resolved_container_path" ]]; then
+  echo "No container provided: select a container image for the vLLM task" >&2
+  exit 1
+fi
+
 cat << EOF > {{ location }}/{{ task_name }}.submit
 #!/bin/bash
 
@@ -14,8 +20,8 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 {{ container_module_command }}
 
 apptainer exec --nv \
-  --bind {{ model_path }}:/model \
-  {{ container_path }} \
+  --bind "{{ model_path }}":/model \
+  "$resolved_container_path" \
   bash <<'DIAMOND_TASK_END'
 set -euo pipefail
 
