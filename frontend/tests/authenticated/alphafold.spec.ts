@@ -24,7 +24,7 @@ test.describe('AlphaFold structure prediction', () => {
         .getByText('AlphaFold Container (.sif) *')
         .locator('..')
         .locator('input')
-    ).toHaveValue('/projects/bcrc/hxie6/alphafold/colabfold_1.6.2-cuda12.sif');
+    ).toHaveValue('/projects/bccu/diamond/colabfold_1.6.2-cuda12.sif');
     // The container dropdown is hidden: the image lives on Delta, not in Diamond.
     await expect(page.getByText('Container *')).toHaveCount(0);
 
