@@ -15,7 +15,7 @@ from diamond_backend.app.utils.functions import _escape_shell_braces
 from diamond_backend.app.utils.scripts_render import render_task_template_script
 
 ALPHAFOLD_TEMPLATE = "alphafold-colabfold-delta.j2"
-DEFAULT_SIF = "/projects/bcrc/hxie6/alphafold/colabfold_1.6.2-cuda12.sif"
+DEFAULT_SIF = "/projects/bccu/diamond/colabfold_1.6.2-cuda12.sif"
 
 ALPHAFOLD_CONTEXT = {
     "location": "/tmp/diamond",

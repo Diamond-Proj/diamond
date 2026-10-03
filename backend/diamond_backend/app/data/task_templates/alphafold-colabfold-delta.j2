@@ -130,7 +130,7 @@ apptainer exec --nv \
   -B "$input_dir":/diamond_input \
   -B "$resolved_out_dir":/diamond_output \
   $weights_bind \
-  "{{ container_path or '/projects/bcrc/hxie6/alphafold/colabfold_1.6.2-cuda12.sif' }}" \
+  "{{ container_path or '/projects/bccu/diamond/colabfold_1.6.2-cuda12.sif' }}" \
   colabfold_batch \
     --data /cache/colabfold \
     --num-models {{ num_models_value }} \
