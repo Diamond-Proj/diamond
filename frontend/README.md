@@ -66,7 +66,7 @@ Use [`.env.example`](.env.example) as a starting point.
 | `NEXT_PUBLIC_GLOBUS_CLIENT_ID` | Globus application client ID used for sign-in.                                                  |
 | `NEXT_PUBLIC_GLOBUS_SCOPES`    | Space-separated Globus scopes required by the application.                                      |
 | `GLOBUS_CLIENT_SECRET`         | Server-side credential for token exchange and refresh.                                          |
-| `VERCEL_GIT_COMMIT_SHA`        | Optional revision identifier returned by the healthcheck.                                       |
+| `GIT_COMMIT_SHA`               | Commit SHA returned by the healthcheck; set at image build time by build-and-push.              |
 
 The template also contains `NEXT_PUBLIC_VERCEL_URL` and `DATABASE_URL`; neither is
 currently read by the frontend source. Configure the backend database in the
