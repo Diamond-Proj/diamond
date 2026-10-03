@@ -34,6 +34,9 @@ COPY --from=builder /app/.next ./.next
 COPY --from=builder /app/public ./public
 COPY --from=builder /app/next.config.ts ./
 
+ARG GIT_COMMIT_SHA
+ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+
 EXPOSE 3000
 
 CMD ["node", "node_modules/next/dist/bin/next", "start"]

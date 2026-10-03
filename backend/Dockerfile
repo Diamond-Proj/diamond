@@ -20,6 +20,9 @@ RUN --mount=type=cache,target=/root/.cache/uv \
 
 COPY diamond_backend/ diamond_backend/
 
+ARG GIT_COMMIT_SHA
+ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
+
 EXPOSE 5328
 
 ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:5328"
