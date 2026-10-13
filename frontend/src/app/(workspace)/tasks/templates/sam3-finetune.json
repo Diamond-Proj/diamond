@@ -4,12 +4,13 @@
   "name": "SAM3 Finetuning",
   "description": "Fine-tune SAM3 for image segmentation on a labeled dataset using Delta@NCSA.",
   "category": "Fine-tuning",
-  "hiddenFields": ["dataset_id", "task"],
+  "hiddenFields": ["dataset_id", "task", "container"],
   "defaults": {
     "taskName": "sam3-finetune",
     "num_of_nodes": 1,
     "time_duration": "01:00:00",
     "slurm_options": "#SBATCH --gpus-per-node=1\n#SBATCH --mem=64G",
+    "container_path": "/projects/bcrc/diamond/images/sam3.sif",
     "epochs": 4,
     "category": "lung"
   },
@@ -22,7 +23,7 @@
       "optional": [
         {
           "label": "SAM3 (facebook/sam3)",
-          "value": "/work/nvme/bccu/diamond/sam3_ft/hf_cache/hub/models--facebook--sam3/snapshots/3c879f39826c281e95690f02c7821c4de09afae7/sam3.pt"
+          "value": "/projects/bcrc/diamond/sam3_ft/hf_cache/hub/models--facebook--sam3/snapshots/3c879f39826c281e95690f02c7821c4de09afae7/sam3.pt"
         }
       ]
     },
@@ -34,14 +35,14 @@
       "optional": [
         {
           "label": "Montgomery Chest X-ray (lung)",
-          "value": "/work/nvme/bccu/diamond/montgomery_extracted/"
+          "value": "/projects/bcrc/diamond/montgomery_extracted/"
         }
       ]
     },
     {
       "key": "finetuned_model_path",
       "label": "Output Directory",
-      "placeholder": "/work/nvme/bccu/diamond/sam3_ft/models",
+      "placeholder": "/projects/bcrc/diamond/sam3_ft/models",
       "required": true
     },
     {
@@ -62,6 +63,12 @@
       "label": "Category (segmentation target)",
       "placeholder": "lung",
       "required": true
+    },
+    {
+      "key": "container_path",
+      "label": "SAM3 Container (.sif)",
+      "required": true,
+      "help": "SAM3 Apptainer image on the cluster (.sif file or sandbox directory)."
     }
   ]
 }

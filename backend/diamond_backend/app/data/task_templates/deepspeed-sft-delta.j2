@@ -25,7 +25,7 @@ apptainer exec --nv \
   --bind {{ model_path }}:/model \
   --bind {{ dataset_path }}:/app/DeepSpeedExamples/applications/DeepSpeed-Chat/data \
   --bind $resolved_finetuned_model_path:/scratch \
-  /projects/bccu/diamond/deepspeed_chat.sif \
+  "{{ container_path | default('', true) or '/projects/bcrc/diamond/images/deepspeed_chat.sif' }}" \
   bash <<'DIAMOND_TASK_END'
 set -euo pipefail
 

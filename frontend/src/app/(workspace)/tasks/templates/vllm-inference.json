@@ -4,12 +4,13 @@
   "name": "Launch vLLM Chat Service",
   "description": "Launch an OpenAI-compatible vLLM service on a compute node and keep it available for interactive chat.",
   "category": "Inference",
-  "hiddenFields": ["dataset_id", "task"],
+  "hiddenFields": ["dataset_id", "task", "container"],
   "defaults": {
     "taskName": "vllm-inference",
     "num_of_nodes": 1,
     "time_duration": "00:20:00",
     "slurm_options": "#SBATCH --gpus-per-node=1\n#SBATCH --mem=64G",
+    "container_path": "/projects/bcrc/diamond/images/vllm-openai_nightly.sif",
     "served_model_name": "diamond-assistant",
     "max_model_len": 2048,
     "vllm_extra_args": ""
@@ -30,6 +31,12 @@
       "label": "Max Model Length",
       "placeholder": "2048",
       "required": true
+    },
+    {
+      "key": "container_path",
+      "label": "vLLM Container (.sif)",
+      "required": true,
+      "help": "vLLM OpenAI-compatible server Apptainer image on the cluster (.sif file or sandbox directory)."
     }
   ]
 }
