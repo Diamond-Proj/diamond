@@ -15,7 +15,7 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 
 apptainer exec --nv \
   --bind {{ model_path }}:/model \
-  {{ container_path }} \
+  "{{ container_path | default('', true) or '/projects/bcrc/diamond/images/vllm-openai_nightly.sif' }}" \
   bash <<'DIAMOND_TASK_END'
 set -euo pipefail
 
