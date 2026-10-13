@@ -64,6 +64,25 @@ export function EndpointsContent() {
   const [dataPrepMessage, setDataPrepMessage] = useState('');
   const { toast } = useToast();
 
+  const fetchEndpointDetails = useCallback(async (): Promise<
+    EndpointDetail[]
+  > => {
+    try {
+      const detailsResponse = await fetch('/api/list_all_endpoints', {
+        credentials: 'include'
+      });
+      if (!detailsResponse.ok) {
+        return [];
+      }
+      const details = (await detailsResponse.json()) as EndpointDetail[];
+      setEndpointDetails(details);
+      return details;
+    } catch (error) {
+      console.error('Failed to fetch endpoint details:', error);
+      return [];
+    }
+  }, []);
+
   const fetchEndpoints = useCallback(async () => {
     try {
       const response = await fetch('/api/endpoint_overview', {
@@ -78,48 +97,19 @@ export function EndpointsContent() {
         throw new Error('Failed to fetch endpoints');
       }
       const data = (await response.json()) as EndpointOverviewResponse;
+      const details = await fetchEndpointDetails();
+      const diamondDirs = new Map(
+        details.map((detail) => [detail.endpoint_uuid, detail.diamond_dir])
+      );
 
-      const endpointArray: Endpoint[] = Object.entries(data).map(
-        ([uuid, info]) => ({
+      setEndpoints(
+        Object.entries(data).map(([uuid, info]) => ({
           endpoint_uuid: uuid,
           endpoint_name: info.name,
-          is_managed: info.is_managed
-        })
+          is_managed: info.is_managed,
+          diamond_dir: diamondDirs.get(uuid) || ''
+        }))
       );
-
-      const enriched = await Promise.all(
-        endpointArray.map(async (ep: Endpoint) => {
-          try {
-            const res = await fetch(
-              `/api/get_diamond_dir?endpoint_uuid=${encodeURIComponent(ep.endpoint_uuid)}`,
-              { credentials: 'include' }
-            );
-            if (!res.ok) return ep;
-            const { diamond_dir } = await res.json();
-            return { ...ep, diamond_dir: diamond_dir || '' };
-          } catch (error) {
-            console.error(
-              `Failed to fetch diamond_dir for ${ep.endpoint_uuid}:`,
-              error
-            );
-            return ep;
-          }
-        })
-      );
-      setEndpoints(enriched);
-
-      // Fetch endpoint details
-      try {
-        const detailsResponse = await fetch('/api/list_all_endpoints', {
-          credentials: 'include'
-        });
-        if (detailsResponse.ok) {
-          const details = (await detailsResponse.json()) as EndpointDetail[];
-          setEndpointDetails(details);
-        }
-      } catch (error) {
-        console.error('Failed to fetch endpoint details:', error);
-      }
     } catch (error) {
       console.error('Error fetching endpoints:', error);
       toast({
@@ -128,7 +118,7 @@ export function EndpointsContent() {
         variant: 'destructive'
       });
     }
-  }, [toast]);
+  }, [fetchEndpointDetails, toast]);
 
   useEffect(() => {
     const loadInitialData = async () => {
@@ -138,43 +128,22 @@ export function EndpointsContent() {
     loadInitialData();
   }, [fetchEndpoints]);
 
-  const runDataPrepWorkflow = useCallback(
-    async (): Promise<{ success: boolean; message?: string }> => {
-    setDataPrepStatus('running');
-    setDataPrepProgress({ completed: 0, total: 0, currentEndpoint: '' });
-    setDataPrepMessage('');
-
-    try {
-      const response = await fetch('/api/list_all_endpoints', {
-        credentials: 'include'
-      });
-
-      if (!response.ok) {
-        throw new Error('Failed to fetch endpoints for preparation.');
-      }
-
-      const allEndpointDetails = (await response.json()) as EndpointDetail[];
-      const eligibleEndpoints = allEndpointDetails.filter(
-        (endpoint) =>
-          endpoint.endpoint_status === 'online' && endpoint.is_managed
-      );
-
-      if (eligibleEndpoints.length === 0) {
-        const message =
-          'No online, managed endpoints available for preparation.';
-        setDataPrepStatus('error');
-        setDataPrepMessage(message);
-        return { success: false, message };
-      }
+  const prepareEndpoints = useCallback(
+    async (
+      targets: EndpointDetail[]
+    ): Promise<{ success: boolean; message?: string }> => {
+      setDataPrepStatus('running');
+      setDataPrepProgress({ completed: 0, total: 0, currentEndpoint: '' });
+      setDataPrepMessage('');
 
       const failures: string[] = [];
 
-      for (let i = 0; i < eligibleEndpoints.length; i++) {
-        const endpoint = eligibleEndpoints[i];
+      for (let i = 0; i < targets.length; i++) {
+        const endpoint = targets[i];
 
         setDataPrepProgress({
           completed: i,
-          total: eligibleEndpoints.length,
+          total: targets.length,
           currentEndpoint: endpoint.endpoint_name
         });
 
@@ -201,8 +170,8 @@ export function EndpointsContent() {
       }
 
       setDataPrepProgress({
-        completed: eligibleEndpoints.length,
-        total: eligibleEndpoints.length,
+        completed: targets.length,
+        total: targets.length,
         currentEndpoint: ''
       });
 
@@ -216,6 +185,38 @@ export function EndpointsContent() {
       setDataPrepStatus('success');
       setDataPrepMessage('Endpoint data preparation complete.');
       return { success: true };
+    },
+    []
+  );
+
+  const runDataPrepWorkflow = useCallback(async (): Promise<{
+    success: boolean;
+    message?: string;
+  }> => {
+    try {
+      const response = await fetch('/api/list_all_endpoints', {
+        credentials: 'include'
+      });
+
+      if (!response.ok) {
+        throw new Error('Failed to fetch endpoints for preparation.');
+      }
+
+      const allEndpointDetails = (await response.json()) as EndpointDetail[];
+      const eligibleEndpoints = allEndpointDetails.filter(
+        (endpoint) =>
+          endpoint.endpoint_status === 'online' && endpoint.is_managed
+      );
+
+      if (eligibleEndpoints.length === 0) {
+        const message =
+          'No online, managed endpoints available for preparation.';
+        setDataPrepStatus('error');
+        setDataPrepMessage(message);
+        return { success: false, message };
+      }
+
+      return await prepareEndpoints(eligibleEndpoints);
     } catch (error) {
       const message =
         error instanceof Error
@@ -225,13 +226,12 @@ export function EndpointsContent() {
       setDataPrepMessage(message);
       return { success: false, message };
     }
-  },
-  []);
+  }, [prepareEndpoints]);
 
   const refreshEndpoints = async () => {
     try {
       setIsRefreshing(true);
-      const response = await fetch('/api/register_all_endpoints', {
+      const response = await fetch('/api/refresh_managed_endpoints', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json'
@@ -277,7 +277,7 @@ export function EndpointsContent() {
   const toggleEndpointManagement = async (
     endpointUuid: string,
     isManaged: boolean
-  ) => {
+  ): Promise<boolean> => {
     try {
       setManagingEndpoints((prev) => new Set(prev).add(endpointUuid));
 
@@ -295,7 +295,7 @@ export function EndpointsContent() {
       if (!response.ok) {
         const error = await response.json();
         throw new Error(
-          error.error || 'Failed to update endpoint management status'
+          error.reason || 'Failed to update endpoint management status'
         );
       }
 
@@ -311,6 +311,7 @@ export function EndpointsContent() {
             : endpoint
         )
       );
+      return true;
     } catch (error) {
       console.error('Error updating endpoint management:', error);
       toast({
@@ -323,12 +324,27 @@ export function EndpointsContent() {
       });
 
       setEndpoints((prev) => [...prev]);
+      return false;
     } finally {
       setManagingEndpoints((prev) => {
         const next = new Set(prev);
         next.delete(endpointUuid);
         return next;
       });
+    }
+  };
+
+  const addEndpoint = async (endpointUuid: string) => {
+    const added = await toggleEndpointManagement(endpointUuid, true);
+    if (!added) {
+      return;
+    }
+
+    // Load accounts/partitions now instead of waiting for the next refresh.
+    const details = await fetchEndpointDetails();
+    const detail = details.find((item) => item.endpoint_uuid === endpointUuid);
+    if (detail?.endpoint_status === 'online') {
+      await prepareEndpoints([detail]);
     }
   };
 
@@ -474,9 +490,7 @@ export function EndpointsContent() {
                       key={endpoint.endpoint_uuid}
                       endpoint={endpoint}
                       isAdding={managingEndpoints.has(endpoint.endpoint_uuid)}
-                      onAdd={() =>
-                        toggleEndpointManagement(endpoint.endpoint_uuid, true)
-                      }
+                      onAdd={() => addEndpoint(endpoint.endpoint_uuid)}
                     />
                   ))}
                 </>

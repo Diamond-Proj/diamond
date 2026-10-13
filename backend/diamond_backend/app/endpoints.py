@@ -11,7 +11,8 @@ from diamond_backend.app.utils.data_prep import (
     endpoint_initialization_status,
     globus_compute_wrapped_run,
     load_accounts_partitions,
-    register_all_endpoints,
+    refresh_managed_endpoints,
+    register_endpoint,
 )
 from diamond_backend.app.utils.decorators import authenticated
 from diamond_backend.app.utils.functions import (
@@ -23,17 +24,14 @@ from diamond_backend.app.utils.login_flow import initialize_globus_compute_clien
 logger = logging.getLogger(__name__)
 
 
-@app.route("/api/register_all_endpoints", methods=["POST"])
+@app.route("/api/refresh_managed_endpoints", methods=["POST"])
 @authenticated
-def diamond_register_all_endpoints():
-    """Register all endpoints for a user"""
+def diamond_refresh_managed_endpoints():
+    """Refresh the status of the user's managed endpoints"""
     identity_id = request.cookies.get("primary_identity")
     globus_compute_client = initialize_globus_compute_client()
-    # Register endpoints and get all endpoints in one step
-    all_endpoints = register_all_endpoints(
-        globus_compute_client, identity_id, g_database, logger
-    )
-    return jsonify({"status": "success", "endpoints": all_endpoints}), 200
+    refresh_managed_endpoints(globus_compute_client, identity_id, g_database, logger)
+    return jsonify({"status": "success"}), 200
 
 
 @app.route("/api/load_accounts_partitions", methods=["POST"])
@@ -231,6 +229,19 @@ def update_endpoint_managed_status(endpoint_uuid: str):
         raise RequestMalformed("Missing JSON field 'is_managed'")
 
     logger.info(f"Endpoint management update for {endpoint_uuid} requested")
+
+    # The Available tab is built from the Globus Compute API, so a user who has
+    # never clicked "Refresh Endpoints" has no rows in the DB yet.
+    if not g_database.exists_endpoint(
+        identity_id=identity_id, endpoint_uuid=endpoint_uuid
+    ):
+        register_endpoint(
+            initialize_globus_compute_client(),
+            identity_id,
+            endpoint_uuid,
+            g_database,
+            logger,
+        )
 
     g_database.update_endpoint_managed_status(
         identity_id=identity_id, endpoint_uuid=endpoint_uuid, is_managed=is_managed

@@ -298,7 +298,7 @@ def _endpoint_is_pollable(endpoint_id):
     Evidence-based on purpose: the breaker trips only when a submit actually
     fails, and self-heals when the key expires. It deliberately does not consult
     Endpoints.endpoint_status, which is only written by an explicit
-    POST /api/register_all_endpoints -- a stale "offline" there would suppress a
+    POST /api/refresh_managed_endpoints -- a stale "offline" there would suppress a
     healthy endpoint with nothing to ever clear it.
     """
     if not endpoint_id:

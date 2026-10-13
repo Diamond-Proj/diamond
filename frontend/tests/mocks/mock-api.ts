@@ -305,17 +305,7 @@ export async function mockEndpointsPageApi(page: Page) {
     await json(route, details);
   });
 
-  await page.route('**/api/get_diamond_dir**', async (route) => {
-    const url = new URL(route.request().url());
-    const endpointUuid = url.searchParams.get('endpoint_uuid');
-
-    await json(route, {
-      diamond_dir:
-        endpointUuid === 'endpoint-ui-gpu' ? '/scratch/diamond' : null
-    });
-  });
-
-  await page.route('**/api/register_all_endpoints', async (route) => {
+  await page.route('**/api/refresh_managed_endpoints', async (route) => {
     await json(route, { status: 'success' });
   });
 

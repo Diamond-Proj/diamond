@@ -469,6 +469,36 @@ test.describe('Authenticated UI regression', () => {
     ).toBeVisible();
   });
 
+  test('adding an available endpoint prepares it without a refresh', async ({
+    page
+  }) => {
+    await mockEndpointsPageApi(page);
+
+    const preparedEndpoints: string[] = [];
+    await page.route('**/api/load_accounts_partitions', async (route) => {
+      preparedEndpoints.push(
+        (route.request().postDataJSON() as { endpoint_uuid: string })
+          .endpoint_uuid
+      );
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ status: 'success' })
+      });
+    });
+
+    await page.goto('/endpoints');
+    await page.getByRole('tab', { name: 'Available Endpoints' }).click();
+    await page.getByRole('button', { name: /^Add$/ }).click();
+
+    await expect(page.getByText('Endpoint data ready')).toBeVisible();
+    expect(preparedEndpoints).toEqual(['endpoint-ui-available']);
+
+    await page.getByRole('tab', { name: 'Managed Endpoints' }).click();
+    await expect(page.getByText('Available CPU Queue')).toBeVisible();
+    await expect(page.getByText('cpu01.test')).toBeVisible();
+  });
+
   test('profile page renders authenticated user details', async ({ page }) => {
     await mockCommonApi(page);
     await page.goto('/profile');
