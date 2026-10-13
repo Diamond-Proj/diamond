@@ -75,6 +75,11 @@ class Database:
         self, identity_id=None, initialized: bool = True
     ):
         profile = Profile.query.filter_by(identity_id=identity_id).first()
+        if profile is None:
+            # The dashboard creates the profile lazily; a user who lands on
+            # another page first has none yet.
+            logger.warning(f"Profile {identity_id} not found; skipping init state")
+            return
         profile.is_initialized = initialized
         db.session.commit()
 
@@ -344,8 +349,10 @@ class Database:
             logger.error(f"Endpoint {endpoint_uuid} not found")
             return None
 
-    def update_endpoint_status(self, endpoint_uuid, endpoint_status):
-        endpoint = Endpoints.query.filter_by(endpoint_uuid=endpoint_uuid).first()
+    def update_endpoint_status(self, identity_id, endpoint_uuid, endpoint_status):
+        endpoint = Endpoints.query.filter_by(
+            identity_id=identity_id, endpoint_uuid=endpoint_uuid
+        ).first()
         if endpoint:
             endpoint.endpoint_status = endpoint_status
             db.session.commit()
@@ -426,7 +433,9 @@ class Database:
 
     def get_stats(self, identity_id) -> dict[str, t.Collection]:
         """Fetch stats for the dashboard"""
-        user_endpoints = Endpoints.query.filter_by(identity_id=identity_id)
+        user_endpoints = Endpoints.query.filter_by(
+            identity_id=identity_id, is_managed=True
+        )
         user_tasks = Task.query.filter_by(identity_id=identity_id)
         user_images = Container.query.filter_by(identity_id=identity_id)
 
