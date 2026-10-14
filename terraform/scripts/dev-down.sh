@@ -38,6 +38,7 @@ terraform -chdir="$BRANCH_DIR" workspace select default
 terraform -chdir="$BRANCH_DIR" workspace delete "$BRANCH"
 
 echo "==> Dropping database '$DB_NAME' on the shared dev instance..."
+terraform -chdir="$DEV_DIR" init -input=false >/dev/null
 CLUSTER_NAME=$(terraform -chdir="$DEV_DIR" output -raw ecs_cluster_name)
 SUBNET_ID=$(terraform -chdir="$DEV_DIR" output -json private_subnet_ids | python3 -c 'import json,sys; print(json.load(sys.stdin)[0])')
 DB_ADMIN_TASK_DEF=$(terraform -chdir="$DEV_DIR" output -raw db_admin_task_definition_arn)

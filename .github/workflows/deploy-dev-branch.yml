@@ -39,4 +39,7 @@ jobs:
           terraform_wrapper: false
 
       - name: Deploy branch to dev
+        env:
+          # Baked into the frontend image at build time.
+          NEXT_PUBLIC_GLOBUS_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GLOBUS_CLIENT_ID }}
         run: ./terraform/scripts/dev-up.sh "${{ inputs.branch || github.ref_name }}"

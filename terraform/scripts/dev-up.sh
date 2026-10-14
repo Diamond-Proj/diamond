@@ -28,12 +28,18 @@ DB_NAME="branch_${BRANCH//-/_}"
 echo "==> Branch slug: $BRANCH  (db: $DB_NAME)"
 
 echo "==> Reading shared dev infra outputs..."
+# A fresh checkout (e.g. CI) has no .terraform/ yet, so `output` can't reach
+# the S3 state until the backend is initialized.
+terraform -chdir="$DEV_DIR" init -input=false >/dev/null
 BACKEND_REPO=$(terraform -chdir="$DEV_DIR" output -raw backend_ecr_repository_url)
 FRONTEND_REPO=$(terraform -chdir="$DEV_DIR" output -raw frontend_ecr_repository_url)
 CLUSTER_NAME=$(terraform -chdir="$DEV_DIR" output -raw ecs_cluster_name)
 SUBNET_ID=$(terraform -chdir="$DEV_DIR" output -json private_subnet_ids | python3 -c 'import json,sys; print(json.load(sys.stdin)[0])')
 DB_ADMIN_TASK_DEF=$(terraform -chdir="$DEV_DIR" output -raw db_admin_task_definition_arn)
 DB_ADMIN_SG=$(terraform -chdir="$DEV_DIR" output -raw db_admin_security_group_id)
+NAMESPACE=$(terraform -chdir="$DEV_DIR" output -raw service_discovery_namespace_name)
+# Must match the service_discovery_name dev-branch gives this branch's backend.
+FLASK_URL="http://dev-$BRANCH-backend.$NAMESPACE:5328"
 
 # The shared backend/frontend repos are IMMUTABLE, so a tag can only be
 # pushed once. Tag with the branch slug plus the commit (same shape as
