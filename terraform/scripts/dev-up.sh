@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Build + push your branch's images, create its database on the shared dev
-# RDS instance, and stand up its ECS services + ALB.
+# Build + push your branch's images and stand up its ECS services + ALB,
+# pointed at the same shared dev database the persistent dev deploy uses.
 #
 # Usage: ./dev-up.sh [branch-name]
 #   Defaults to your current git branch, sanitized to a DNS-safe slug.
@@ -23,9 +23,23 @@ if [ -z "$BRANCH" ]; then
   echo "Couldn't derive a usable slug from branch name '$RAW_BRANCH'" >&2
   exit 1
 fi
-DB_NAME="branch_${BRANCH//-/_}"
 
-echo "==> Branch slug: $BRANCH  (db: $DB_NAME)"
+if [ -z "${NEXT_PUBLIC_GLOBUS_CLIENT_ID:-}" ]; then
+  echo "NEXT_PUBLIC_GLOBUS_CLIENT_ID must be set (it's baked into the frontend image)" >&2
+  exit 1
+fi
+if [ -z "${TF_VAR_db_url:-}" ]; then
+  echo "TF_VAR_db_url must be set to the shared dev database's connection string (DEV_DB_URL)" >&2
+  exit 1
+fi
+# Optional locally, but without it Globus login fails on the branch deploy.
+if [ -n "${GLOBUS_CLIENT_SECRET:-}" ]; then
+  export TF_VAR_frontend_extra_env="$(jq -nc --arg s "$GLOBUS_CLIENT_SECRET" '{GLOBUS_CLIENT_SECRET: $s}')"
+else
+  echo "WARNING: GLOBUS_CLIENT_SECRET not set -- login won't work on this deploy." >&2
+fi
+
+echo "==> Branch slug: $BRANCH"
 
 echo "==> Reading shared dev infra outputs..."
 # A fresh checkout (e.g. CI) has no .terraform/ yet, so `output` can't reach
@@ -33,10 +47,6 @@ echo "==> Reading shared dev infra outputs..."
 terraform -chdir="$DEV_DIR" init -input=false >/dev/null
 BACKEND_REPO=$(terraform -chdir="$DEV_DIR" output -raw backend_ecr_repository_url)
 FRONTEND_REPO=$(terraform -chdir="$DEV_DIR" output -raw frontend_ecr_repository_url)
-CLUSTER_NAME=$(terraform -chdir="$DEV_DIR" output -raw ecs_cluster_name)
-SUBNET_ID=$(terraform -chdir="$DEV_DIR" output -json private_subnet_ids | python3 -c 'import json,sys; print(json.load(sys.stdin)[0])')
-DB_ADMIN_TASK_DEF=$(terraform -chdir="$DEV_DIR" output -raw db_admin_task_definition_arn)
-DB_ADMIN_SG=$(terraform -chdir="$DEV_DIR" output -raw db_admin_security_group_id)
 NAMESPACE=$(terraform -chdir="$DEV_DIR" output -raw service_discovery_namespace_name)
 # Must match the service_discovery_name dev-branch gives this branch's backend.
 FLASK_URL="http://dev-$BRANCH-backend.$NAMESPACE:5328"
@@ -76,22 +86,6 @@ else
     --build-arg NEXT_PUBLIC_GLOBUS_CLIENT_ID="$NEXT_PUBLIC_GLOBUS_CLIENT_ID" \
     "$REPO_ROOT/frontend"
   docker push "$FRONTEND_REPO:$TAG"
-fi
-
-echo "==> Creating database '$DB_NAME' on the shared dev instance (if it doesn't already exist)..."
-TASK_ARN=$(aws ecs run-task \
-  --region "$AWS_REGION" \
-  --cluster "$CLUSTER_NAME" \
-  --task-definition "$DB_ADMIN_TASK_DEF" \
-  --launch-type FARGATE \
-  --network-configuration "awsvpcConfiguration={subnets=[$SUBNET_ID],securityGroups=[$DB_ADMIN_SG],assignPublicIp=DISABLED}" \
-  --overrides "{\"containerOverrides\":[{\"name\":\"db-admin\",\"environment\":[{\"name\":\"ACTION\",\"value\":\"create\"},{\"name\":\"DB_NAME\",\"value\":\"$DB_NAME\"}]}]}" \
-  --query 'tasks[0].taskArn' --output text)
-aws ecs wait tasks-stopped --region "$AWS_REGION" --cluster "$CLUSTER_NAME" --tasks "$TASK_ARN"
-EXIT_CODE=$(aws ecs describe-tasks --region "$AWS_REGION" --cluster "$CLUSTER_NAME" --tasks "$TASK_ARN" --query 'tasks[0].containers[0].exitCode' --output text)
-if [ "$EXIT_CODE" != "0" ]; then
-  echo "db-admin create task failed (exit $EXIT_CODE) -- check CloudWatch log group $(terraform -chdir="$DEV_DIR" output -raw db_admin_log_group_name)" >&2
-  exit 1
 fi
 
 echo "==> Applying terraform/environments/dev-branch (workspace: $BRANCH)..."

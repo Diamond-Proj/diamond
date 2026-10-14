@@ -1,7 +1,7 @@
 # Manually deploy a branch to the shared dev environment. Thin wrapper
 # around scripts/dev-up.sh -- see terraform/README.md for what it does
-# (build+push branch-tagged images, create the branch's database, apply
-# terraform/environments/dev-branch under a workspace named for the branch).
+# (build+push branch-tagged images, apply terraform/environments/dev-branch
+# under a workspace named for the branch, pointed at the shared dev database).
 name: Deploy dev branch
 
 on:
@@ -42,4 +42,7 @@ jobs:
         env:
           # Baked into the frontend image at build time.
           NEXT_PUBLIC_GLOBUS_CLIENT_ID: ${{ vars.NEXT_PUBLIC_GLOBUS_CLIENT_ID }}
+          GLOBUS_CLIENT_SECRET: ${{ secrets.GLOBUS_CLIENT_SECRET }}
+          # Same shared dev database the persistent dev deploy uses.
+          TF_VAR_db_url: ${{ secrets.DEV_DB_URL }}
         run: ./terraform/scripts/dev-up.sh "${{ inputs.branch || github.ref_name }}"

@@ -12,11 +12,11 @@ terraform/
     dev/            own VPC/ECS cluster (shared by all branch envs) + a persistent "main" deploy, uses its own database on the shared RDS instance
     dev-branch/     ephemeral -- one Terraform workspace per developer branch, plugged into dev's shared infra
   scripts/
-    dev-up.sh       build+push your branch's images, create its DB, deploy it
-    dev-down.sh     tear a branch environment down and drop its DB
+    dev-up.sh       build+push your branch's images, deploy it against the shared dev DB
+    dev-down.sh     tear a branch environment down
 ```
 
-**RDS is provisioned once, by `bootstrap-data/`, and shared.** A single Postgres instance holds separate `dev`/`staging`/`prod` databases (plus one per active branch environment, same as before). Each environment's `database` module ([`modules/database`](modules/database/main.tf)) just looks up that shared instance, its security group, and its master-credentials secret -- all named `diamond-shared-*` -- plus its own environment-specific connection-string secret (`<name>-database-url`, one per environment). The instance itself lives in a dedicated VPC (`bootstrap-data`), peered to each environment's VPC so their ECS tasks can reach it; an SSH bastion in that same VPC gives admin access to the instance directly.
+**RDS is provisioned once, by `bootstrap-data/`, and shared.** A single Postgres instance holds separate `dev`/`staging`/`prod` databases (branch environments reuse `dev`'s). Each environment's `database` module ([`modules/database`](modules/database/main.tf)) just looks up that shared instance, its security group, and its master-credentials secret -- all named `diamond-shared-*` -- plus its own environment-specific connection-string secret (`<name>-database-url`, one per environment). The instance itself lives in a dedicated VPC (`bootstrap-data`), peered to each environment's VPC so their ECS tasks can reach it; an SSH bastion in that same VPC gives admin access to the instance directly.
 
 **IAM roles are provisioned once too, by `bootstrap-iam/`, and shared.** The day-to-day AWS principal running `terraform apply` for dev/staging/prod (and CI) deliberately can't manage IAM in general -- their own policy scopes `iam:CreateRole`/`GetRole`/`AttachRolePolicy`/`PassRole` to `Resource: "role/ecsTask*"` only, and `AttachRolePolicy` to one specific pre-approved managed policy ARN at that. Two names are therefore load-bearing, not stylistic: the shared roles **must** be named exactly `ecsTaskExecutionRole` and `ecsTaskRole` (matching `ecsTask*`), or that user's `GetRole`/`PassRole` calls 403. Since every environment's execution role needs identical permissions (the AWS-managed `AmazonECSTaskExecutionRolePolicy`, plus read access to any `diamond-*` Secrets Manager secret via the standalone `DiamondReadSecrets` policy `bootstrap-iam` also creates), one shared role pair covers every environment and the `db_admin` one-off task. [`modules/app`](modules/app/ecs.tf) and [`modules/db_admin`](modules/db_admin/main.tf) look these up by name via `data "aws_iam_role"` rather than creating their own -- which itself requires `iam:GetRole` on `role/ecsTask*`, and `iam:PassRole` on it (scoped to `ecs-tasks.amazonaws.com`) for ECS to actually accept it in a task definition. Both roles need **both** managed policies attached (`AmazonECSTaskExecutionRolePolicy` for ECR pull + logs, `DiamondReadSecrets` for secrets access) -- a role with only one attached will fail at container startup on whichever half it's missing.
 
@@ -67,7 +67,7 @@ Finally, SSH to the bastion (`terraform -chdir=bootstrap-data output bastion_pub
 ./scripts/dev-up.sh some-branch  # or name one explicitly
 ```
 
-This builds and pushes your branch's images to the shared dev ECR repos (tagged with the branch slug), creates a dedicated Postgres database for it on the shared dev RDS instance, and stands up its own ECS services + ALB. It prints a URL when done.
+This builds and pushes your branch's images to the shared dev ECR repos (tagged with the branch slug), points it at the persistent dev deploy's database (`DEV_DB_URL`, passed as `TF_VAR_db_url`), and stands up its own ECS services + ALB. It prints a URL when done.
 
 When you're finished:
 
@@ -75,12 +75,11 @@ When you're finished:
 ./scripts/dev-down.sh
 ```
 
-This destroys that branch's ECS services/ALB and drops its database, freeing the slug for the next person.
+This destroys that branch's ECS services/ALB (the shared dev database is untouched), freeing the slug for the next person.
 
 ## Design notes
 
-- **Isolation**: branch environments share the dev VPC and RDS *instance*, but each gets its own datbase and its own ECS services/ALB. This keeps spin-up to ~1-2 minutes (no VPC/RDS provisioning) at the cost of sharing one Postgres engine across everyone's branches.
-- **Branch DB credentials**: branch databases are accessed with the shared instance's master user, scoped only by database name -- not a dedicated role per branch. Fine for throwaway test data; revisit before this holds anything sensitive.
+- **Isolation**: branch environments share the dev VPC and the dev *database* itself, but each gets its own ECS services/ALB. This keeps spin-up to ~1-2 minutes (no VPC/RDS/database provisioning) at the cost of no data isolation: anything a branch writes -- including schema migrations -- lands in dev's database.
 - **prod/staging/dev now share one RDS instance too** (see `bootstrap-data/`), each with its own database but *all three connection strings currently use the instance's own master (`postgres`) user* -- there's no narrower per-environment role. That means a leaked staging or dev secret is a leaked prod credential. Fine to start, but worth revisiting (e.g. per-database roles created by hand, or via the `hashicorp/postgresql` Terraform provider) before this holds anything sensitive in prod.
 - **Network isolation is now peering, not separate VPCs**: prod/staging/dev each still have their own VPC, but all three are peered to the shared data VPC so their ECS tasks can reach the one RDS instance. A compromised backend task in any one environment has network-level line of sight to the RDS security group that fronts all three databases (though not to the other environments' VPCs directly -- peering is data-VPC-hub-and-spoke, not mesh).
 

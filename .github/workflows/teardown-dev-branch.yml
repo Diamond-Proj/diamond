@@ -1,6 +1,6 @@
 # Manually tear down a branch's dev deployment. Thin wrapper around
-# scripts/dev-down.sh -- destroys that branch's ECS services/ALB and drops
-# its database, freeing the slug for the next person.
+# scripts/dev-down.sh -- destroys that branch's ECS services/ALB, freeing
+# the slug for the next person. The shared dev database is left alone.
 name: Teardown dev branch
 
 on:

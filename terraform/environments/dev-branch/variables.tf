@@ -13,6 +13,12 @@ variable "branch_name" {
   }
 }
 
+variable "db_url" {
+  description = "Full postgres connection string for the shared dev database (the same DEV_DB_URL the persistent dev deploy uses), e.g. via TF_VAR_db_url. See modules/app's variable of the same name."
+  type        = string
+  sensitive   = true
+}
+
 variable "backend_image" {
   description = "Image pushed by dev-up.sh, tagged with this branch"
   type        = string
