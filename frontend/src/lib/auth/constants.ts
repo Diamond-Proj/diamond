@@ -18,7 +18,12 @@ export const PUBLIC_AUTH_ROUTES = [
   AUTH_CALLBACK_ROUTE,
   CONTACT_ROUTE
 ] as const;
-export const AUTH_EXEMPT_API_ROUTES = ['/api/auth', '/api/healthcheck'] as const;
+export const AUTH_EXEMPT_API_ROUTES = [
+  '/api/auth',
+  '/api/healthcheck',
+  // Fetched by the login button before the user has any tokens.
+  '/api/globus_login_scopes'
+] as const;
 export const CLIENT_AUTH_REDIRECT_EXEMPT_ROUTES = [
   ...PUBLIC_AUTH_ROUTES,
   LOGOUT_ROUTE
