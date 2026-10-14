@@ -10,10 +10,8 @@ module "network" {
 
 # Images live in the shared, IMMUTABLE `backend`/`frontend` ECR repos that
 # .github/workflows/build-and-push.yml pushes to for every environment
-# (dev/staging/prod are distinguished by tag, not by repo) -- used by both
-# the persistent deploy below and every branch environment (see
-# ../dev-branch, scripts/dev-up.sh). Managed outside Terraform, so just
-# look them up here.
+# (dev/staging/prod are distinguished by tag, not by repo). Managed outside
+# Terraform, so just look them up here.
 data "aws_ecr_repository" "backend" {
   name = var.backend_repository_name
 }
@@ -65,20 +63,8 @@ module "cluster" {
   vpc_id = module.network.vpc_id
 }
 
-# Lets scripts/dev-up.sh and scripts/dev-down.sh create/drop a database per
-# branch on this same RDS instance.
-module "db_admin" {
-  source = "../../modules/db_admin"
-
-  name                          = local.name
-  vpc_id                        = module.network.vpc_id
-  master_credentials_secret_arn = module.database.master_credentials_secret_arn
-  rds_security_group_id         = module.database.security_group_id
-}
-
-# The persistent dev deploy -- always tracks main, always up. Branch
-# environments (../dev-branch) are separate app instances layered on top of
-# the same vpc/cluster/database via terraform_remote_state.
+# The dev deploy -- one at a time: a manual build-and-push run on any branch
+# deploys that branch here, replacing whatever was running.
 module "app" {
   source = "../../modules/app"
 

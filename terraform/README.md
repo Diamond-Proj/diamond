@@ -5,20 +5,16 @@ terraform/
   bootstrap/        one-time: S3 state bucket (locking is S3-native, no DynamoDB)
   bootstrap-data/    one-time: shared RDS instance + SSH bastion, VPC-peered to dev/staging/prod
   bootstrap-iam/     one-time: shared ECS execution/task roles, applied by whoever actually has IAM permissions
-  modules/          reusable building blocks (network, registry, database, cluster, db_admin, app)
+  modules/          reusable building blocks (network, registry, database, cluster, app)
   environments/
     prod/           own VPC, own ECS cluster/ALB, uses its own database on the shared RDS instance
     staging/        same as prod, smaller/cheaper
-    dev/            own VPC/ECS cluster (shared by all branch envs) + a persistent "main" deploy, uses its own database on the shared RDS instance
-    dev-branch/     ephemeral -- one Terraform workspace per developer branch, plugged into dev's shared infra
-  scripts/
-    dev-up.sh       build+push your branch's images, deploy it against the shared dev DB
-    dev-down.sh     tear a branch environment down
+    dev/            own VPC/ECS cluster + one deploy (whichever branch was deployed last), uses its own database on the shared RDS instance
 ```
 
-**RDS is provisioned once, by `bootstrap-data/`, and shared.** A single Postgres instance holds separate `dev`/`staging`/`prod` databases (branch environments reuse `dev`'s). Each environment's `database` module ([`modules/database`](modules/database/main.tf)) just looks up that shared instance, its security group, and its master-credentials secret -- all named `diamond-shared-*` -- plus its own environment-specific connection-string secret (`<name>-database-url`, one per environment). The instance itself lives in a dedicated VPC (`bootstrap-data`), peered to each environment's VPC so their ECS tasks can reach it; an SSH bastion in that same VPC gives admin access to the instance directly.
+**RDS is provisioned once, by `bootstrap-data/`, and shared.** A single Postgres instance holds separate `dev`/`staging`/`prod` databases. Each environment's `database` module ([`modules/database`](modules/database/main.tf)) just looks up that shared instance, its security group, and its master-credentials secret -- all named `diamond-shared-*` -- plus its own environment-specific connection-string secret (`<name>-database-url`, one per environment). The instance itself lives in a dedicated VPC (`bootstrap-data`), peered to each environment's VPC so their ECS tasks can reach it; an SSH bastion in that same VPC gives admin access to the instance directly.
 
-**IAM roles are provisioned once too, by `bootstrap-iam/`, and shared.** The day-to-day AWS principal running `terraform apply` for dev/staging/prod (and CI) deliberately can't manage IAM in general -- their own policy scopes `iam:CreateRole`/`GetRole`/`AttachRolePolicy`/`PassRole` to `Resource: "role/ecsTask*"` only, and `AttachRolePolicy` to one specific pre-approved managed policy ARN at that. Two names are therefore load-bearing, not stylistic: the shared roles **must** be named exactly `ecsTaskExecutionRole` and `ecsTaskRole` (matching `ecsTask*`), or that user's `GetRole`/`PassRole` calls 403. Since every environment's execution role needs identical permissions (the AWS-managed `AmazonECSTaskExecutionRolePolicy`, plus read access to any `diamond-*` Secrets Manager secret via the standalone `DiamondReadSecrets` policy `bootstrap-iam` also creates), one shared role pair covers every environment and the `db_admin` one-off task. [`modules/app`](modules/app/ecs.tf) and [`modules/db_admin`](modules/db_admin/main.tf) look these up by name via `data "aws_iam_role"` rather than creating their own -- which itself requires `iam:GetRole` on `role/ecsTask*`, and `iam:PassRole` on it (scoped to `ecs-tasks.amazonaws.com`) for ECS to actually accept it in a task definition. Both roles need **both** managed policies attached (`AmazonECSTaskExecutionRolePolicy` for ECR pull + logs, `DiamondReadSecrets` for secrets access) -- a role with only one attached will fail at container startup on whichever half it's missing.
+**IAM roles are provisioned once too, by `bootstrap-iam/`, and shared.** The day-to-day AWS principal running `terraform apply` for dev/staging/prod (and CI) deliberately can't manage IAM in general -- their own policy scopes `iam:CreateRole`/`GetRole`/`AttachRolePolicy`/`PassRole` to `Resource: "role/ecsTask*"` only, and `AttachRolePolicy` to one specific pre-approved managed policy ARN at that. Two names are therefore load-bearing, not stylistic: the shared roles **must** be named exactly `ecsTaskExecutionRole` and `ecsTaskRole` (matching `ecsTask*`), or that user's `GetRole`/`PassRole` calls 403. Since every environment's execution role needs identical permissions (the AWS-managed `AmazonECSTaskExecutionRolePolicy`, plus read access to any `diamond-*` Secrets Manager secret via the standalone `DiamondReadSecrets` policy `bootstrap-iam` also creates), one shared role pair covers every environment. [`modules/app`](modules/app/ecs.tf) looks these up by name via `data "aws_iam_role"` rather than creating their own -- which itself requires `iam:GetRole` on `role/ecsTask*`, and `iam:PassRole` on it (scoped to `ecs-tasks.amazonaws.com`) for ECS to actually accept it in a task definition. Both roles need **both** managed policies attached (`AmazonECSTaskExecutionRolePolicy` for ECR pull + logs, `DiamondReadSecrets` for secrets access) -- a role with only one attached will fail at container startup on whichever half it's missing.
 
 State lives in the shared S3 bucket created by `bootstrap/`, one object per environment (workspaces get their own key automatically). Locking uses S3's native conditional-write locking (`use_lockfile`, requires Terraform >= 1.11) -- no DynamoDB table needed. This lets any machine (including CI) safely run `apply`/`destroy` against a given environment.
 
@@ -38,7 +34,7 @@ terraform init
 terraform apply
 ```
 
-Apply `prod`, `staging`, and `dev` each once (see their `terraform.tfvars.example`) -- this creates their VPCs, which `bootstrap-data` needs to peer against. This will fail on `module.app`/`module.db_admin` if `bootstrap-iam` hasn't been applied yet (they look up its roles by name), so do that first.
+Apply `prod`, `staging`, and `dev` each once (see their `terraform.tfvars.example`) -- this creates their VPCs, which `bootstrap-data` needs to peer against. This will fail on `module.app` if `bootstrap-iam` hasn't been applied yet (they look up its roles by name), so do that first.
 
 ```bash
 cd environments/dev
@@ -58,28 +54,12 @@ terraform apply -var="master_password=<something>"
 
 Finally, SSH to the bastion (`terraform -chdir=bootstrap-data output bastion_public_ip`) and, using the master credentials in Secrets Manager (`diamond-shared-db-master-credentials`), run `CREATE DATABASE dev;` / `CREATE DATABASE staging;` / `CREATE DATABASE prod;`, then restore each environment's data into its database however you're migrating it in. Once traffic is confirmed flowing through the new instance, delete whatever RDS instance/bastion you'd created manually before -- `bootstrap-data` fully replaces them.
 
-`dev` must exist before any branch environment can be created -- `dev-branch` reads its VPC/RDS/cluster/ECR details via `terraform_remote_state`.
-
 ## Day-to-day: testing a branch
 
-```bash
-./scripts/dev-up.sh              # uses your current git branch
-./scripts/dev-up.sh some-branch  # or name one explicitly
-```
-
-This builds and pushes your branch's images to the shared dev ECR repos (tagged with the branch slug), points it at the persistent dev deploy's database (`DEV_DB_URL`, passed as `TF_VAR_db_url`), and stands up its own ECS services + ALB. It prints a URL when done.
-
-When you're finished:
-
-```bash
-./scripts/dev-down.sh
-```
-
-This destroys that branch's ECS services/ALB (the shared dev database is untouched), freeing the slug for the next person.
+Run the `build-and-push` workflow manually (Actions -> build-and-push -> Run workflow) and pick your branch under "Use workflow from". It builds that branch's images and redeploys `diamond-dev-backend`/`diamond-dev-frontend` with them -- there's only ever one dev deploy, so whoever ran it last is what dev is running.
 
 ## Design notes
 
-- **Isolation**: branch environments share the dev VPC and the dev *database* itself, but each gets its own ECS services/ALB. This keeps spin-up to ~1-2 minutes (no VPC/RDS/database provisioning) at the cost of no data isolation: anything a branch writes -- including schema migrations -- lands in dev's database.
 - **prod/staging/dev now share one RDS instance too** (see `bootstrap-data/`), each with its own database but *all three connection strings currently use the instance's own master (`postgres`) user* -- there's no narrower per-environment role. That means a leaked staging or dev secret is a leaked prod credential. Fine to start, but worth revisiting (e.g. per-database roles created by hand, or via the `hashicorp/postgresql` Terraform provider) before this holds anything sensitive in prod.
 - **Network isolation is now peering, not separate VPCs**: prod/staging/dev each still have their own VPC, but all three are peered to the shared data VPC so their ECS tasks can reach the one RDS instance. A compromised backend task in any one environment has network-level line of sight to the RDS security group that fronts all three databases (though not to the other environments' VPCs directly -- peering is data-VPC-hub-and-spoke, not mesh).
 
@@ -92,8 +72,6 @@ This destroys that branch's ECS services/ALB (the shared dev database is untouch
 | `prod` | push a tag matching `vMAJOR.MINOR.PATCH` (e.g. `v1.4.2`) | pre-releases (`v1.4.2-rc1` etc.) are built but not deployed |
 | `staging` | push to `main` | |
 | `dev` | manual run (`workflow_dispatch`) on any branch | deploys that branch to the persistent `dev` deploy -- whoever ran it last is what dev is running |
-
-Per-branch environments are separate: [`deploy-dev-branch.yml`](../.github/workflows/deploy-dev-branch.yml) / [`teardown-dev-branch.yml`](../.github/workflows/teardown-dev-branch.yml) are thin wrappers around `scripts/dev-up.sh` / `scripts/dev-down.sh`, same as running them locally.
 
 **ECR repos**: every environment pulls from the shared `backend`/`frontend` repos (created outside Terraform, `IMMUTABLE` tags) -- environments are distinguished by tag, not repo. The frontend's `FLASK_URL` is baked in at build time and is the same everywhere (`http://backend.diamond.local:5328`), so one image can be promoted across environments.
 
