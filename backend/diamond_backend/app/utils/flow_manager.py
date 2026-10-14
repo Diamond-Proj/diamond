@@ -60,8 +60,8 @@ FLOW_TEMPLATES = {
                     "properties": {
                         "globus_compute_sdk_version": {"type": "string"},
                         "python": {"type": "object"},
-                    }
-                }
+                    },
+                },
             },
             "required": [
                 "endpoint_id",
@@ -124,14 +124,30 @@ def check_and_create_flows(app: Flask):
                 try:
                     flow_title = f"Diamond - {flow_data['title_prefix']}"
 
-                    flow_create_response = gfc.create_flow(
-                        title=flow_title,
-                        definition=flow_data["definition"],
-                        input_schema=flow_data["input_schema"],
-                        flow_viewers=["public"],
-                        flow_starters=["all_authenticated_users"],
+                    # Globus only lets this client own one flow, and every
+                    # environment's database starts empty -- reuse the flow
+                    # it already owns rather than failing to create another.
+                    flow_id = next(
+                        (
+                            flow["id"]
+                            for flow in gfc.list_flows(filter_roles="flow_owner")
+                            if flow["title"] == flow_title
+                        ),
+                        None,
                     )
-                    flow_id = flow_create_response["id"]
+                    if flow_id:
+                        logger.info(
+                            f"Reusing existing Globus flow '{flow_title}': {flow_id}"
+                        )
+                    else:
+                        flow_create_response = gfc.create_flow(
+                            title=flow_title,
+                            definition=flow_data["definition"],
+                            input_schema=flow_data["input_schema"],
+                            flow_viewers=["public"],
+                            flow_starters=["all_authenticated_users"],
+                        )
+                        flow_id = flow_create_response["id"]
 
                     new_flow_entry = Flows(template=template_name, flow_id=flow_id)
                     db.session.add(new_flow_entry)
