@@ -3,8 +3,9 @@ def test_stats(test_db, test_identity):
     assert stats
 
     assert "endpoints" in stats
-    assert stats["endpoints"]["online"] == 2, "Expected 2 online EPs"
-    assert stats["endpoints"]["offline"] == 1, "Expected 1 offline EP"
+    # frontera is offline but not managed, so it must not be counted
+    assert stats["endpoints"]["online"] == 2, "Expected 2 online managed EPs"
+    assert stats["endpoints"]["offline"] == 0, "Expected 0 offline managed EPs"
 
     assert "datasets" in stats
     assert stats["datasets"]["public"] == 1, "Expected 1 public dataset"

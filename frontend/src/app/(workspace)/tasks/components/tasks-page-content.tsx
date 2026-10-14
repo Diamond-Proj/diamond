@@ -7,7 +7,7 @@ import { useToast } from '@/components/ui/use-toast';
 
 import { TasksList } from './tasks-list';
 import { TaskSubmissionModal } from './task-submission-modal';
-import { TaskControls } from './task-controls';
+import { TaskControls, type TaskFilter } from './task-controls';
 import { TaskStats } from './task-stats';
 import { Task, TasksApiResponse, Endpoint } from '../tasks.types';
 
@@ -20,9 +20,7 @@ export function TasksPageContent({ isAuthenticated }: TasksPageContentProps) {
   const [tasks, setTasks] = useState<Task[]>([]);
   const [endpoints, setEndpoints] = useState<Endpoint[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<
-    'all' | 'completed' | 'pending' | 'running' | 'failed'
-  >('all');
+  const [filter, setFilter] = useState<TaskFilter>('all');
   const [searchTerm, setSearchTerm] = useState('');
   const [refreshTrigger, setRefreshTrigger] = useState(0);
   const [deletingTasks, setDeletingTasks] = useState<Set<string>>(new Set());

@@ -169,61 +169,54 @@ def endpoint_initialization_status(
     return endpoint_map
 
 
-def register_all_endpoints(
+def register_endpoint(
+    globus_compute_client: GlobusComputeClient,
+    identity_id,
+    endpoint_uuid,
+    database,
+    logger,
+):
+    """Save one endpoint for the user."""
+    endpoint_status = globus_compute_client.get_endpoint_status(
+        endpoint_uuid=endpoint_uuid
+    )["status"]
+    endpoint_metadata = globus_compute_client.get_endpoint_metadata(
+        endpoint_uuid=endpoint_uuid
+    )
+    endpoint_name = endpoint_metadata["display_name"]
+    logger.info(f"Saving endpoint: {endpoint_name} ({endpoint_status})")
+    database.save_endpoint(
+        identity_id=identity_id,
+        endpoint_name=endpoint_name,
+        endpoint_host=resolve_host(endpoint_metadata["hostname"]),
+        endpoint_uuid=endpoint_uuid,
+        endpoint_status=endpoint_status,
+        # MEP specific hack
+        user_endpoint_config=MEP_DEFAULT_ENDPOINT_CONFIG.get(endpoint_uuid),
+    )
+
+
+def refresh_managed_endpoints(
     globus_compute_client: GlobusComputeClient, identity_id, database, logger
 ):
-    logger.info(f"Registering all endpoints for user: {identity_id}")
-
-    # Specify role=Any to fetch MEPs in addition to those owned by the user
-    endpoints = globus_compute_client.get_endpoints(role="any")
-    all_endpoints = []
-    for endpoint in endpoints:
-        logger.info(f"Checking endpoint: {endpoint}")
-        endpoint_name = endpoint["display_name"]
-        endpoint_uuid = endpoint["uuid"]
+    """Re-read the status of the user's managed endpoints from Globus Compute."""
+    logger.info(f"Refreshing managed endpoints for user: {identity_id}")
+    for endpoint in database.get_managed_endpoints(identity_id=identity_id):
         try:
             endpoint_status = globus_compute_client.get_endpoint_status(
-                endpoint_uuid=endpoint_uuid
+                endpoint_uuid=endpoint.endpoint_uuid
             )["status"]
-            logger.info(f"Endpoint {endpoint_name} status: {endpoint_status}")
         except Exception as e:
             logger.error(
-                f"Error getting endpoint status for endpoint {endpoint_name}: {e}"
+                f"Error getting endpoint status for endpoint {endpoint.endpoint_name}: {e}"
             )
             continue
-        endpoint_metadata = globus_compute_client.get_endpoint_metadata(
-            endpoint_uuid=endpoint_uuid
+        logger.info(f"Endpoint {endpoint.endpoint_name} status: {endpoint_status}")
+        database.update_endpoint_status(
+            identity_id=identity_id,
+            endpoint_uuid=endpoint.endpoint_uuid,
+            endpoint_status=endpoint_status,
         )
-        endpoint_host = resolve_host(endpoint_metadata["hostname"])
-        if not database.exists_endpoint(
-            identity_id=identity_id, endpoint_uuid=endpoint_uuid
-        ):
-            logger.info(f"Saving endpoint: {endpoint_name}")
-
-            # MEP specific hack
-            user_endpoint_config = MEP_DEFAULT_ENDPOINT_CONFIG.get(endpoint_uuid, None)
-            database.save_endpoint(
-                identity_id=identity_id,
-                endpoint_name=endpoint_name,
-                endpoint_host=endpoint_host,
-                endpoint_uuid=endpoint_uuid,
-                endpoint_status=endpoint_status,
-                user_endpoint_config=user_endpoint_config,
-            )
-        else:
-            logger.info(f"Endpoint {endpoint_name} already exists, updating status")
-            database.update_endpoint_status(
-                endpoint_uuid=endpoint_uuid, endpoint_status=endpoint_status
-            )
-        all_endpoints.append(
-            {
-                "endpoint_uuid": endpoint_uuid,
-                "endpoint_name": endpoint_name,
-                "endpoint_host": endpoint_host,
-                "endpoint_status": endpoint_status,
-            }
-        )
-    return all_endpoints
 
 
 def _get_endpoint_machine_metadata(

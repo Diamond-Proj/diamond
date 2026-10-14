@@ -13,7 +13,25 @@ import { TokenManagerServer } from './tokenManager.server';
 import type { TokenStore } from './types';
 import { fetchDynamicGlobusScopes } from './client'; // Import fetchDynamicGlobusScopes
 
-function getBaseUrl(request: NextRequest): string {
+// Behind a proxy (e.g. the AWS ALB), request.nextUrl/request.url are built from
+// the server's own listen address (localhost:3000), not the public host. Prefer
+// an explicit APP_BASE_URL, then the forwarded headers, then nextUrl as a
+// local-dev fallback.
+export function getBaseUrl(request: NextRequest): string {
+  const configured = process.env.APP_BASE_URL;
+  if (configured) {
+    return configured.replace(/\/$/, '');
+  }
+
+  const host =
+    request.headers.get('x-forwarded-host') ?? request.headers.get('host');
+  if (host) {
+    const proto =
+      request.headers.get('x-forwarded-proto') ??
+      request.nextUrl.protocol.replace(':', '');
+    return `${proto}://${host}`;
+  }
+
   return request.nextUrl.origin;
 }
 
@@ -99,7 +117,9 @@ async function initiateGlobusLogin(request: NextRequest): Promise<NextResponse> 
 async function signOut(request: NextRequest): Promise<NextResponse> {
   console.log('Processing sign-out...');
 
-  const response = NextResponse.redirect(new URL(SIGN_IN_ROUTE, request.url));
+  const response = NextResponse.redirect(
+    new URL(SIGN_IN_ROUTE, getBaseUrl(request))
+  );
   TokenManagerServer.clearCookiesOnResponse(response);
 
   console.log('Sign-out successful');
@@ -117,14 +137,18 @@ async function maybeRefreshTokens(
   console.log('Tokens need refresh, attempting refresh...');
 
   if (!TokenManagerServer.canRefreshTokenStore(tokens)) {
-    console.log('Token bundle is not fully refreshable, redirecting to sign-in');
+    console.log(
+      'Token bundle is not fully refreshable, redirecting to sign-in'
+    );
     return getExpiredSessionRedirect(request, tokens);
   }
 
   const refreshedTokens = await TokenManagerServer.refreshTokenStore(tokens);
 
   if (!refreshedTokens) {
-    console.log('Token refresh failed for expired session, redirecting to sign-in');
+    console.log(
+      'Token refresh failed for expired session, redirecting to sign-in'
+    );
     return getExpiredSessionRedirect(request, tokens);
   }
 

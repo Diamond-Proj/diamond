@@ -2,7 +2,14 @@
 
 import { useCallback, useMemo } from 'react';
 import { Task } from '../tasks.types';
-import { CheckCircle, Clock, XCircle, Loader, Terminal } from 'lucide-react';
+import {
+  CircleDashed,
+  CheckCircle,
+  Clock,
+  XCircle,
+  Loader,
+  Terminal
+} from 'lucide-react';
 import TaskItem from './task/TaskItem';
 
 interface TasksListProps {
@@ -34,6 +41,10 @@ export function TasksList({
         );
       case 'FAILED':
         return <XCircle className="h-4 w-4 text-red-600 dark:text-red-400" />;
+      case 'STALE':
+        return (
+          <CircleDashed className="h-4 w-4 text-slate-500 dark:text-slate-400" />
+        );
       default:
         return <Clock className="h-4 w-4 text-slate-500 dark:text-slate-400" />;
     }
@@ -49,6 +60,8 @@ export function TasksList({
         return 'bg-orange-100 text-orange-800 dark:bg-orange-950/50 dark:text-orange-300';
       case 'FAILED':
         return 'bg-red-100 text-red-800 dark:bg-red-950/50 dark:text-red-300';
+      case 'STALE':
+        return 'bg-slate-100 text-slate-700 dark:bg-slate-800/60 dark:text-slate-300';
       default:
         return 'bg-slate-100 text-slate-800 dark:bg-slate-950/50 dark:text-slate-300';
     }

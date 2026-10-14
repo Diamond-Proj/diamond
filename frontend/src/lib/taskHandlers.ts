@@ -50,26 +50,6 @@ export async function updateUserProfile(data: UpdateUserProfileData) {
   }
 }
 
-export async function registerAllEndpoints() {
-  try {
-    const response = await fetch('/api/register_all_endpoints', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      }
-    });
-    if (!response.ok) {
-      throw new Error('Network response was not ok');
-    }
-    const responseData = await response.json();
-    console.log('registerAllEndpoints responseData:', responseData);
-    return responseData;
-  } catch (error) {
-    console.error('Error in registerAllEndpoints:', error);
-    throw error;
-  }
-}
-
 export async function loadAccountsPartitions(data: { endpoint_uuid: string }) {
   try {
     const response = await fetch('/api/load_accounts_partitions', {

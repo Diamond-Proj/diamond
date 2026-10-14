@@ -16,24 +16,20 @@ GLOBUS_COMPUTE_SDK_VERSION = metadata.version("globus-compute-sdk")
 HOST = app.config.get("HOST")
 AUTH_URL = app.config.get("AUTH_URL")
 NEXT_URL = app.config.get("NEXT_URL")
-RAILWAY_GIT_COMMIT_SHA = app.config.get("RAILWAY_GIT_COMMIT_SHA")
+GIT_COMMIT_SHA = app.config.get("GIT_COMMIT_SHA")
 
 logger.info(f"HOST in routes.py: {HOST}")
 logger.info(f"AUTH_URL in routes.py: {AUTH_URL}")
 logger.info(f"NEXT_URL in routes.py: {NEXT_URL}")
-logger.info(f"RAILWAY_GIT_COMMIT_SHA in routes.py: {RAILWAY_GIT_COMMIT_SHA}")
+logger.info(f"GIT_COMMIT_SHA in routes.py: {GIT_COMMIT_SHA}")
 
 
 def get_git_info():
     """Get the latest git commit SHA and commit time from the main branch."""
-    # Check if RAILWAY_GIT_COMMIT_SHA exists and is a string
-    railway_commit_sha = current_app.config.get("RAILWAY_GIT_COMMIT_SHA")
-    if (
-        railway_commit_sha
-        and isinstance(railway_commit_sha, str)
-        and len(railway_commit_sha) == 40
-    ):
-        return {"commit_sha": railway_commit_sha}
+    # Check if GIT_COMMIT_SHA exists and is a string
+    git_commit_sha = current_app.config.get("GIT_COMMIT_SHA")
+    if git_commit_sha and isinstance(git_commit_sha, str) and len(git_commit_sha) == 40:
+        return {"commit_sha": git_commit_sha}
     else:
         return {"commit_sha": "unknown"}
 

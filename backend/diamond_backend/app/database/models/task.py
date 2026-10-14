@@ -5,6 +5,7 @@ Task model
 from sqlalchemy import func
 
 from diamond_backend.app.database.db import db
+from diamond_backend.app.utils.task_status import effective_status
 
 
 class Task(db.Model):  # type: ignore[name-defined]
@@ -19,6 +20,15 @@ class Task(db.Model):  # type: ignore[name-defined]
     stderr_path = db.Column(db.String)
     compute_endpoint_id = db.Column(db.String)  # UUID of the compute endpoint
     checkpoint_path = db.Column(db.String)
+
+    @property
+    def status(self) -> str:
+        """Derived view of task_status that also reports STALE.
+
+        Read-only on purpose: assigning a derived value onto the instance would
+        be flushed to the database by the next autoflush, silently persisting it.
+        """
+        return effective_status(self)
 
     def __init__(
         self,

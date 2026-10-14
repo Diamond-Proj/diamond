@@ -12,10 +12,12 @@ import deepspeedSftDelta from './deepspeed-sft.json';
 import vllmInference from './vllm-inference.json';
 import sam3Finetune from './sam3-finetune.json';
 import sam3Predict from './sam3-predict.json';
+import alphafoldColabfold from './alphafold-colabfold.json';
 
 export const TASK_TEMPLATES: TaskTemplate[] = [
   deepspeedSftDelta as TaskTemplate,
   vllmInference as TaskTemplate,
   sam3Finetune as TaskTemplate,
-  sam3Predict as TaskTemplate
+  sam3Predict as TaskTemplate,
+  alphafoldColabfold as TaskTemplate
 ];

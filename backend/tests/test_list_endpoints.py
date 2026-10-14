@@ -1,3 +1,5 @@
+import logging
+import random
 import uuid
 from unittest.mock import Mock
 
@@ -5,7 +7,10 @@ import pytest
 from globus_compute_sdk.sdk.client import Client
 
 from diamond_backend.app.errors import EndpointNotFound
-from diamond_backend.app.utils.data_prep import endpoint_initialization_status
+from diamond_backend.app.utils.data_prep import (
+    endpoint_initialization_status,
+    refresh_managed_endpoints,
+)
 from tests.conftest import TEST_IDENTITY
 
 
@@ -101,3 +106,35 @@ def test_non_existent_manager_update(test_db, test_identity):
             "BAD_UUID",
             is_managed=True,
         )
+
+
+def test_refresh_only_polls_managed_endpoints(test_db):
+    """Refresh must not touch endpoints the user has not added to management."""
+    identity = f"TEST_IDENTITY_REFRESH_{random.randint(1, 100000)}"
+    managed_uuid = str(uuid.uuid4())
+    unmanaged_uuid = str(uuid.uuid4())
+    test_db.save_endpoint(
+        identity, "MANAGED_EP", "host", managed_uuid, "offline", is_managed=True
+    )
+    test_db.save_endpoint(identity, "UNMANAGED_EP", "host", unmanaged_uuid, "offline")
+    # Same (shared MEP) uuid managed by another user must stay untouched.
+    other_identity = f"{identity}_OTHER"
+    test_db.save_endpoint(
+        other_identity, "MANAGED_EP", "host", managed_uuid, "offline", is_managed=True
+    )
+
+    client = Mock(spec=Client)
+    client.get_endpoint_status.return_value = {"status": "online"}
+    refresh_managed_endpoints(client, identity, test_db, logging.getLogger(__name__))
+
+    client.get_endpoint_status.assert_called_once_with(endpoint_uuid=managed_uuid)
+    statuses = {
+        ep.endpoint_uuid: ep.endpoint_status
+        for ep in test_db.get_endpoints(identity_id=identity)
+    }
+    assert statuses == {managed_uuid: "online", unmanaged_uuid: "offline"}
+    other_row = test_db.get_endpoints(identity_id=other_identity)[0]
+    assert other_row.endpoint_status == "offline"
+
+    test_db.delete_endpoints(identity)
+    test_db.delete_endpoints(other_identity)

@@ -4,11 +4,12 @@ import {
   GLOBUS_TOKEN_URL,
   SIGN_IN_ROUTE
 } from '@/lib/auth/constants';
+import { getBaseUrl } from '@/lib/auth/auth';
 import { TokenManagerServer } from '@/lib/auth/tokenManager.server';
 import { type GlobusTokenResponse } from '@/lib/auth/types';
 
 function redirectWithError(request: NextRequest, error: string) {
-  const redirectUrl = new URL(SIGN_IN_ROUTE, request.url);
+  const redirectUrl = new URL(SIGN_IN_ROUTE, getBaseUrl(request));
   redirectUrl.searchParams.set('error', error);
   return NextResponse.redirect(redirectUrl);
 }
@@ -34,7 +35,10 @@ export async function GET(request: NextRequest) {
     // Exchange code for tokens
     const clientId = process.env.NEXT_PUBLIC_GLOBUS_CLIENT_ID;
     const clientSecret = process.env.GLOBUS_CLIENT_SECRET;
-    const redirectUri = new URL(AUTH_CALLBACK_ROUTE, request.url).toString();
+    const redirectUri = new URL(
+      AUTH_CALLBACK_ROUTE,
+      getBaseUrl(request)
+    ).toString();
 
     if (!clientId || !clientSecret) {
       console.error('Missing Globus credentials');
@@ -97,12 +101,15 @@ export async function GET(request: NextRequest) {
     console.log('✓ User info extracted:', userInfo);
 
     // Create redirect response
-    const dashboardUrl = new URL('/dashboard', request.url);
+    const dashboardUrl = new URL('/dashboard', getBaseUrl(request));
     const response = NextResponse.redirect(dashboardUrl);
 
     console.log('Setting cookies...');
     TokenManagerServer.setTokensOnResponse(response, tokens);
-    console.log('Resource servers in cookie:', Object.keys(tokens.by_resource_server));
+    console.log(
+      'Resource servers in cookie:',
+      Object.keys(tokens.by_resource_server)
+    );
 
     console.log('=== Auth Callback Completed ===');
     return response;

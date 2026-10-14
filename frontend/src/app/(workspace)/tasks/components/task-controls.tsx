@@ -3,13 +3,19 @@
 import { ChevronDown, Filter, Search } from 'lucide-react';
 import { useEffect, useRef, useState } from 'react';
 
+export type TaskFilter =
+  | 'all'
+  | 'completed'
+  | 'pending'
+  | 'running'
+  | 'failed'
+  | 'stale';
+
 interface TaskControlsProps {
   searchTerm: string;
   setSearchTerm: (term: string) => void;
-  filter: 'all' | 'completed' | 'pending' | 'running' | 'failed';
-  setFilter: (
-    filter: 'all' | 'completed' | 'pending' | 'running' | 'failed'
-  ) => void;
+  filter: TaskFilter;
+  setFilter: (filter: TaskFilter) => void;
 }
 
 const filterOptions = [
@@ -17,7 +23,8 @@ const filterOptions = [
   { value: 'running', label: 'Running' },
   { value: 'pending', label: 'Pending' },
   { value: 'completed', label: 'Completed' },
-  { value: 'failed', label: 'Failed' }
+  { value: 'failed', label: 'Failed' },
+  { value: 'stale', label: 'Stale' }
 ] as const;
 
 export function TaskControls({

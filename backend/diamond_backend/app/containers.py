@@ -6,6 +6,7 @@ from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import RequestMalformed
 from diamond_backend.app.task_runtime import refresh_identity_task_statuses
 from diamond_backend.app.utils.decorators import authenticated
+from diamond_backend.app.utils.task_status import STALE_STATUS, effective_status
 
 logger = logging.getLogger(__name__)
 
@@ -18,11 +19,15 @@ def _resolve_container_status(container, task_lookup=None):
     if not linked_task:
         return container.container_status or ""
 
-    task_status = str(linked_task.task_status or "").strip().upper()
+    task_status = effective_status(linked_task)
     if task_status in {"COMPLETED", "COMPLETING"}:
         return "ACTIVE"
     if task_status == "MISSING":
         return "FAILED"
+    if task_status == STALE_STATUS:
+        # The build task aged out of polling; report what we recorded for the
+        # container rather than passing a task-level status off as one.
+        return container.container_status or ""
     return task_status
 
 

@@ -25,7 +25,7 @@ export interface DashboardStats {
 export interface RecentTask {
   task_id: string;
   name: string;
-  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'RUNNING';
+  status: 'PENDING' | 'COMPLETED' | 'FAILED' | 'RUNNING' | 'STALE';
   create_time: string;
   last_update_time: string;
 }

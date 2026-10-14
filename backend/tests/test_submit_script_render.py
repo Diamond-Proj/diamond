@@ -145,10 +145,36 @@ def test_render_task_template_script():
     assert "/models/qwen" in script
     assert "/data/scifact" in script
     assert "--bind $resolved_finetuned_model_path:/scratch" in script
+    assert "/projects/bcrc/diamond/images/deepspeed_chat.sif" in script
     assert "/scratch/demo-sft-model" in script
     assert "DIAMOND_ARTIFACT_PATH=$resolved_artifact_path" in script
     assert "cat << EOF" in script
     assert "export MASTER_PORT=\\$(( 50000 + \\${SLURM_JOB_ID: -4} ))" in script
+
+
+def test_render_deepspeed_sft_template_prefers_selected_container():
+    script = render_task_template_script(
+        "deepspeed-sft-delta.j2",
+        {
+            "location": "/tmp",
+            "task_name": "demo-task",
+            "stdout_path": "/tmp/demo.stdout",
+            "stderr_path": "/tmp/demo.stderr",
+            "num_of_nodes": 1,
+            "time_duration": "00:10:00",
+            "partition": "gpu",
+            "account": "proj",
+            "slurm_options": "--gpus-per-node=1",
+            "model_path": "/models/qwen",
+            "dataset_path": "/data/scifact",
+            "reservation": "",
+            "container_path": "/work/images/custom-deepspeed.sif",
+            "finetuned_model_path": "/finetuned/model/path",
+            "finetuned_model_name": "demo-sft-model",
+        },
+    )
+    assert "/work/images/custom-deepspeed.sif" in script
+    assert "/projects/bcrc/diamond/images/deepspeed_chat.sif" not in script
 
 
 def test_render_container_build_template_script():
@@ -298,6 +324,31 @@ def test_render_vllm_template_script():
     assert 'sbatch_output="$(sbatch' in script
 
 
+def test_render_vllm_template_falls_back_to_default_container():
+    script = render_task_template_script(
+        "vllm-inference.j2",
+        {
+            "location": "/tmp",
+            "task_name": "vllm-demo",
+            "stdout_path": "/tmp/vllm.stdout",
+            "stderr_path": "/tmp/vllm.stderr",
+            "num_of_nodes": 1,
+            "time_duration": "08:00:00",
+            "partition": "gpu",
+            "account": "proj",
+            "slurm_options": "",
+            "reservation": "",
+            "container_module_command": "",
+            "model_path": "/work/model/path",
+            "container_path": "",
+            "served_model_name": "diamond-assistant",
+            "max_model_len": 2048,
+            "vllm_extra_args": "",
+        },
+    )
+    assert "/projects/bcrc/diamond/images/vllm-openai_nightly.sif" in script
+
+
 def test_parse_vllm_task_log_info():
     assert _parse_vllm_task_log_info("vllm_task|model=diamond-assistant") == {
         "model": "diamond-assistant",
@@ -374,7 +425,7 @@ def test_render_sam3_finetune_template_script():
         "sam3-finetune-delta.j2", dict(SAM3_FINETUNE_CONTEXT)
     )
     assert "sam3-ft-demo.submit" in script
-    assert "/projects/bcrc/hxie6/sam3_ft/sam3lung.sif" in script
+    assert "/projects/bcrc/diamond/images/sam3.sif" in script
     assert '--model "/projects/sam3/sam3.pt"' in script
     assert '--dataset "/projects/sam3/data/montgomery_extracted"' in script
     assert '--output "$resolved_artifact_path"' in script
@@ -392,7 +443,7 @@ def test_render_sam3_finetune_template_prefers_selected_container():
     context = dict(SAM3_FINETUNE_CONTEXT, container_path="/work/images/custom.sif")
     script = render_task_template_script("sam3-finetune-delta.j2", context)
     assert "/work/images/custom.sif" in script
-    assert "/projects/bcrc/hxie6/sam3_ft/sam3lung.sif" not in script
+    assert "/projects/bcrc/diamond/images/sam3.sif" not in script
 
 
 SAM3_PREDICT_CONTEXT = {
@@ -417,6 +468,7 @@ def test_render_sam3_predict_template_with_cluster_image_path():
     context = dict(SAM3_PREDICT_CONTEXT, image_path="/work/images/l1.jpg")
     script = render_task_template_script("sam3-predict-delta.j2", context)
     assert "sam3-predict-demo.submit" in script
+    assert "/projects/bcrc/diamond/images/sam3.sif" in script
     assert (
         "cat <<'DIAMOND_IMAGE_PATH'\n/work/images/l1.jpg\nDIAMOND_IMAGE_PATH" in script
     )
@@ -972,3 +1024,14 @@ def test_sam3_finetune_relative_output_dir_resolves_under_diamond_dir():
     assert result.returncode == 0, result.stderr
     expected = os.path.join(tmp, "diamond", "models", "run1", "sam3_lung_finetuned.pt")
     assert f"DIAMOND_ARTIFACT_PATH={expected}\n" in result.stdout
+
+
+def test_render_sam3_predict_template_prefers_selected_container():
+    context = dict(
+        SAM3_PREDICT_CONTEXT,
+        image_path="/work/images/l1.jpg",
+        container_path="/work/images/custom.sif",
+    )
+    script = render_task_template_script("sam3-predict-delta.j2", context)
+    assert "/work/images/custom.sif" in script
+    assert "/projects/bcrc/diamond/images/sam3.sif" not in script

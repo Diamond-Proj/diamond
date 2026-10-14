@@ -1,0 +1,42 @@
+# Manually deploy a branch to the shared dev environment. Thin wrapper
+# around scripts/dev-up.sh -- see terraform/README.md for what it does
+# (build+push branch-tagged images, create the branch's database, apply
+# terraform/environments/dev-branch under a workspace named for the branch).
+name: Deploy dev branch
+
+on:
+  workflow_dispatch:
+    inputs:
+      branch:
+        description: 'Branch to deploy (defaults to the branch this workflow is run from)'
+        required: false
+        default: ''
+
+concurrency:
+  group: deploy-dev-branch-${{ inputs.branch || github.ref_name }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment: dev
+    env:
+      AWS_REGION: us-east-2
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ inputs.branch || github.ref }}
+
+      - uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: "1.15.8"
+          terraform_wrapper: false
+
+      - name: Deploy branch to dev
+        run: ./terraform/scripts/dev-up.sh "${{ inputs.branch || github.ref_name }}"

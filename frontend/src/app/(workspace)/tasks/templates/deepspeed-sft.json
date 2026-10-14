@@ -4,12 +4,13 @@
   "name": "DeepSpeed Finetuning",
   "description": "Fine-tune a model using DeepSpeed on a dataset using Delta@NCSA.",
   "category": "Fine-tuning",
-  "hiddenFields": ["dataset_id", "task"],
+  "hiddenFields": ["dataset_id", "task", "container"],
   "defaults": {
     "taskName": "deepspeed-sft",
     "num_of_nodes": 1,
     "time_duration": "00:20:00",
-    "slurm_options": "#SBATCH --gpus-per-node=1\n#SBATCH --mem=64G"
+    "slurm_options": "#SBATCH --gpus-per-node=1\n#SBATCH --mem=64G",
+    "container_path": "/projects/bcrc/diamond/images/deepspeed_chat.sif"
   },
   "customFields": [
     {
@@ -20,7 +21,7 @@
       "optional": [
         {
           "label": "Qwen3-0.6B",
-          "value": "/work/nvme/bcrc/hxie6/model/Qwen3-0.6B"
+          "value": "/projects/bcrc/diamond/Qwen3-0.6B/"
         }
       ]
     },
@@ -30,7 +31,7 @@
       "optional": [
         {
           "label": "diamond-knowledge",
-          "value": "/work/nvme/bcrc/hxie6/diamond_sft/diamond-knowledge"
+          "value": "/projects/bcrc/diamond/diamond-knowledge/"
         }
       ]
     },
@@ -44,6 +45,12 @@
       "key": "finetuned_model_name",
       "label": "Output Model Name",
       "required": true
+    },
+    {
+      "key": "container_path",
+      "label": "DeepSpeed Container (.sif)",
+      "required": true,
+      "help": "DeepSpeed-Chat Apptainer image on the cluster (.sif file or sandbox directory)."
     }
   ]
 }

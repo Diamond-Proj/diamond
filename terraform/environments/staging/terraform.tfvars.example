@@ -1,0 +1,16 @@
+aws_region = "us-east-2"
+
+# A tag build-and-push.yml has already pushed to both the shared `backend`
+# and `frontend` ECR repos (<ref>-<sha7>, e.g. main-abc1234).
+image_tag = "main-abc1234"
+
+backend_extra_env = {
+  # PORTAL_CLIENT_ID     = ""
+  # PORTAL_CLIENT_SECRET = ""
+  # SECRET_KEY           = ""
+}
+
+frontend_extra_env = {
+  # NEXT_PUBLIC_GLOBUS_CLIENT_ID = ""
+  # GLOBUS_CLIENT_SECRET         = ""
+}
