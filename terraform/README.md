@@ -112,11 +112,20 @@ Each environment's ALB ([`modules/app/alb.tf`](modules/app/alb.tf)) is HTTP-only
 
 ```bash
 terraform apply -var="domain_name=dev.diamondhpc.ai"
-terraform output acm_validation_record   # {name, type, value}
+terraform output acm_validation_records   # {<name on the cert> = {name, type, value}, ...}
 ```
-Create that CNAME wherever your DNS actually lives, wait for it to propagate, then:
+Create those CNAMEs wherever your DNS actually lives (in Cloudflare they must be DNS-only, not proxied), wait for them to propagate, then:
 ```bash
 terraform apply -var="domain_name=dev.diamondhpc.ai"   # same var -- this time acm_certificate_validation resolves
 terraform output alb_hostname                          # CNAME dev.diamondhpc.ai to this
 ```
 Point your domain's own CNAME at `alb_hostname`, and you're done -- the app derives its OAuth `redirect_uri` from the incoming request's own host/scheme (see `frontend/src/lib/auth/auth.ts`), so no further code or env changes are needed once traffic actually arrives over `https://dev.diamondhpc.ai`.
+
+**Several names on one ALB**: `subject_alternative_names` adds more hostnames to the same cert, so one cert covers every name whose traffic lands on that ALB. prod uses this for the public names -- `domain_name = prod.diamondhpc.ai` plus `subject_alternative_names = ["diamondhpc.ai", "www.diamondhpc.ai"]` -- because both `diamondhpc.ai` and `www.diamondhpc.ai` are proxied by Cloudflare to the same ALB, and in Cloudflare's *Full (strict)* mode the ALB has to present a cert valid for whichever name the request carries. Each name gets its own entry in `acm_validation_records`. ACM's validation CNAME is deterministic per account + domain, so a record left over from an earlier cert for the same name still validates the new one.
+
+**Replacing the cert** (any change to `domain_name` or `subject_alternative_names`) has a manual step. `create_before_destroy` issues the new cert and switches the 443 listener to it first, but the ALB keeps the previous default cert in the listener's certificate list as a non-default SNI cert. ACM therefore still reports the old cert "in use", its destroy fails, and Terraform keeps it as a *deposed* object that every later apply retries for ~20 minutes before failing. Once the listener has switched (the apply prints `aws_lb_listener.https[0]: Modifications complete`), detach the old cert -- while the apply is still retrying is fine, the next retry then succeeds -- and re-apply if it had already given up:
+
+```bash
+aws elbv2 describe-listener-certificates --listener-arn <https listener arn>   # IsDefault=false ones are the leftovers
+aws elbv2 remove-listener-certificates --listener-arn <https listener arn> --certificates CertificateArn=<old cert arn>
+```

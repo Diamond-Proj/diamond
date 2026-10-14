@@ -78,5 +78,6 @@ module "app" {
   backend_extra_env  = var.backend_extra_env
   frontend_extra_env = var.frontend_extra_env
 
-  domain_name = var.domain_name
+  domain_name               = var.domain_name
+  subject_alternative_names = var.subject_alternative_names
 }

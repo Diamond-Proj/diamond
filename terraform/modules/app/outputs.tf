@@ -14,11 +14,14 @@ output "frontend_image" {
   value = var.frontend_image
 }
 
-output "acm_validation_record" {
-  description = "DNS record to create by hand (this project's domains aren't in Route 53) so ACM can validate the cert for var.domain_name. Null until domain_name is set."
-  value = var.domain_name != null ? {
-    name  = tolist(aws_acm_certificate.frontend[0].domain_validation_options)[0].resource_record_name
-    type  = tolist(aws_acm_certificate.frontend[0].domain_validation_options)[0].resource_record_type
-    value = tolist(aws_acm_certificate.frontend[0].domain_validation_options)[0].resource_record_value
-  } : null
+output "acm_validation_records" {
+  description = "DNS records to create by hand (this project's domains aren't in Route 53) so ACM can validate the cert: one per name on it (var.domain_name plus var.subject_alternative_names), keyed by that name. Empty until domain_name is set."
+  value = {
+    for dvo in flatten([for c in aws_acm_certificate.frontend : tolist(c.domain_validation_options)]) :
+    dvo.domain_name => {
+      name  = dvo.resource_record_name
+      type  = dvo.resource_record_type
+      value = dvo.resource_record_value
+    }
+  }
 }

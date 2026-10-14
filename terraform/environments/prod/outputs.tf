@@ -15,9 +15,9 @@ output "alb_hostname" {
   value       = module.app.alb_dns_name
 }
 
-output "acm_validation_record" {
-  description = "DNS record to create by hand so ACM can validate var.domain_name's cert. Null until domain_name is set."
-  value       = module.app.acm_validation_record
+output "acm_validation_records" {
+  description = "DNS records to create by hand so ACM can validate the cert, one per name on it. Empty until domain_name is set."
+  value       = module.app.acm_validation_records
 }
 
 output "backend_ecr_repository_url" {

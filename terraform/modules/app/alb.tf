@@ -56,13 +56,24 @@ resource "aws_lb_listener" "http" {
 # Only created when var.domain_name is set (skippable for throwaway branch
 # environments, which stay HTTP-only on their raw ALB DNS name). This
 # project's domains aren't in Route 53, so validation is manual -- apply
-# once to get the acm_validation_record output, create that CNAME wherever
-# DNS actually lives, then apply again once it's propagated (the
-# aws_acm_certificate_validation resource just polls ACM until it sees it).
+# once to get the acm_validation_records output, create those CNAMEs wherever
+# DNS actually lives, then apply again once they've propagated (the
+# aws_acm_certificate_validation resource just polls ACM until it sees them).
+#
+# Changing domain_name or subject_alternative_names replaces the cert. With
+# create_before_destroy the new one is issued and the 443 listener switched to
+# it first, but the ALB keeps the previous default cert in the listener's
+# certificate list (as a non-default SNI cert), so ACM still reports it "in
+# use" and the destroy of the old cert fails, leaving a deposed object that
+# every later apply retries. After the listener has switched, detach the old
+# cert by hand and re-apply:
+#   aws elbv2 remove-listener-certificates --listener-arn <https listener> \
+#     --certificates CertificateArn=<old cert arn>
 resource "aws_acm_certificate" "frontend" {
-  count             = var.domain_name != null ? 1 : 0
-  domain_name       = var.domain_name
-  validation_method = "DNS"
+  count                     = var.domain_name != null ? 1 : 0
+  domain_name               = var.domain_name
+  subject_alternative_names = var.subject_alternative_names
+  validation_method         = "DNS"
 
   lifecycle {
     create_before_destroy = true
