@@ -75,6 +75,7 @@ with app.app_context():
     from diamond_backend.app.utils.flow_manager import (
         check_and_create_flows,
         check_and_create_functions,
+        start_flow_renewal,
     )
 
     # `flask db upgrade` (and diamond_backend.db_upgrade) import this module
@@ -83,6 +84,7 @@ with app.app_context():
     if inspector.has_table("flows") and inspector.has_table("functions"):
         check_and_create_flows(app)
         check_and_create_functions(app)
+        start_flow_renewal(app)
     else:
         logger.warning(
             "flows/functions tables missing -- skipping startup flow creation "

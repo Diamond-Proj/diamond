@@ -96,6 +96,10 @@ def get_specific_flow_client(request_cookies, flow_id) -> globus_sdk.SpecificFlo
     flow = Flows.query.filter_by(template="run_function").first()
     flow_id = flow.flow_id
     token_data = tokens_data.get(flow_id)
+    if not token_data:
+        # The flow was renewed (new ID) since this user signed in.
+        logger.error(f"No token for flow {flow_id} in tokens")
+        raise Unauthorized("No token for the current flow -- please sign in again")
     authorizer = globus_sdk.RefreshTokenAuthorizer(
         token_data["refresh_token"],
         client,

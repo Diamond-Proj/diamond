@@ -1,4 +1,7 @@
 import logging
+import threading
+import time
+from datetime import datetime, timedelta, timezone
 
 import globus_sdk
 from flask import Flask
@@ -15,6 +18,10 @@ from diamond_backend.app.utils.login_flow import (
 logger = logging.getLogger(__name__)
 
 RECREATE_FLOWS = False  # delete and recreate flows on startup (requires new Globus login after for auth)
+# Flows expire after ~2 weeks; recreate them (same caveat as above) once
+# they're this old -- a day short, so the daily check always catches it first.
+FLOW_MAX_AGE = timedelta(days=13)
+FLOW_RENEWAL_CHECK_INTERVAL = timedelta(days=1)
 RECREATE_FUNCTIONS = True  # delete and recreate functions on startup
 
 
@@ -94,7 +101,22 @@ def get_startup_flow_client():
         raise
 
 
+def _find_owned_flow(gfc, title):
+    """The flow with this title that this client owns, or None."""
+    return next(
+        (f for f in gfc.list_flows(filter_roles="flow_owner") if f["title"] == title),
+        None,
+    )
+
+
 def check_and_create_flows(app: Flask):
+    """Make sure each template has a current Globus flow, recorded in the DB.
+
+    Globus only lets this client own one flow, so the flow it owns (not the
+    DB row, which may point at an expired flow) is the source of truth. Flows
+    expire, so one older than FLOW_MAX_AGE is deleted and recreated -- that
+    gives it a new ID, and users have to sign in again to consent to it.
+    """
     with app.app_context():
         try:
             print("Checking and creating flows if necessary...")
@@ -106,62 +128,55 @@ def check_and_create_flows(app: Flask):
             return
 
         for template_name, flow_data in FLOW_TEMPLATES.items():
-            existing_flow = Flows.query.filter_by(template=template_name).first()
-
-            if existing_flow and RECREATE_FLOWS:
-                try:
-                    gfc.delete_flow(existing_flow.flow_id)
-                except Exception as e:
-                    logger.error(f"Error deleting existing flow: {e}")
-                    pass
-                Flows.query.filter_by(template=template_name).delete()
-                existing_flow = None
-
-            if not existing_flow:
-                logger.info(
-                    f"Flow for template '{template_name}' not found. Creating..."
-                )
-                try:
-                    flow_title = f"Diamond - {flow_data['title_prefix']}"
-
-                    # Globus only lets this client own one flow, and every
-                    # environment's database starts empty -- reuse the flow
-                    # it already owns rather than failing to create another.
-                    flow_id = next(
-                        (
-                            flow["id"]
-                            for flow in gfc.list_flows(filter_roles="flow_owner")
-                            if flow["title"] == flow_title
-                        ),
-                        None,
+            flow_title = f"Diamond - {flow_data['title_prefix']}"
+            try:
+                owned = _find_owned_flow(gfc, flow_title)
+                if owned:
+                    age = datetime.now(timezone.utc) - datetime.fromisoformat(
+                        owned["created_at"]
                     )
-                    if flow_id:
+                    if RECREATE_FLOWS or age > FLOW_MAX_AGE:
                         logger.info(
-                            f"Reusing existing Globus flow '{flow_title}': {flow_id}"
+                            f"Renewing flow '{flow_title}' {owned['id']} "
+                            f"(created {age.days} days ago)"
                         )
-                    else:
-                        flow_create_response = gfc.create_flow(
-                            title=flow_title,
-                            definition=flow_data["definition"],
-                            input_schema=flow_data["input_schema"],
-                            flow_viewers=["public"],
-                            flow_starters=["all_authenticated_users"],
-                        )
-                        flow_id = flow_create_response["id"]
+                        gfc.delete_flow(owned["id"])
+                        owned = None
 
-                    new_flow_entry = Flows(template=template_name, flow_id=flow_id)
-                    db.session.add(new_flow_entry)
-                    db.session.commit()
+                if owned:
+                    flow_id = owned["id"]
+                else:
+                    flow_id = gfc.create_flow(
+                        title=flow_title,
+                        definition=flow_data["definition"],
+                        input_schema=flow_data["input_schema"],
+                        flow_viewers=["public"],
+                        flow_starters=["all_authenticated_users"],
+                    )["id"]
                     logger.info(f"Created flow '{template_name}' with ID: {flow_id}")
-                except Exception as e:
-                    logger.error(
-                        f"Unexpected error creating flow '{template_name}': {e}"
-                    )
-                    db.session.rollback()
-            else:
-                logger.info(
-                    f"Flow '{template_name}' already exists: {existing_flow.flow_id}"
-                )
+
+                entry = Flows.query.filter_by(template=template_name).first()
+                if entry is None:
+                    db.session.add(Flows(template=template_name, flow_id=flow_id))
+                elif entry.flow_id != flow_id:
+                    entry.flow_id = flow_id
+                db.session.commit()
+                logger.info(f"Flow '{template_name}' is {flow_id}")
+            except Exception as e:
+                logger.error(f"Unexpected error setting up flow '{template_name}': {e}")
+                db.session.rollback()
+
+
+def start_flow_renewal(app: Flask):
+    """Re-run check_and_create_flows daily so a long-running server renews
+    flows before they expire, not just on restart."""
+
+    def loop():
+        while True:
+            time.sleep(FLOW_RENEWAL_CHECK_INTERVAL.total_seconds())
+            check_and_create_flows(app)
+
+    threading.Thread(target=loop, name="flow-renewal", daemon=True).start()
 
 
 def get_startup_function_client():
