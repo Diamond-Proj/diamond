@@ -18,13 +18,8 @@ export async function fetchAuthSession(): Promise<AuthSession> {
 }
 
 export async function fetchDynamicGlobusScopes(): Promise<string[]> {
-  const flaskUrl = process.env.NEXT_PUBLIC_FLASK_URL || 'localhost:5328';
-  const protocol = flaskUrl.includes('localhost') ? 'http' : 'https';
-  const flaskBaseUrl = flaskUrl.startsWith('http')
-    ? flaskUrl
-    : `${protocol}://${flaskUrl}`;
-
-  const response = await fetch(`${flaskBaseUrl}/api/globus_login_scopes`, {
+  // Same-origin: next.config.ts rewrites /api/* to the Flask backend.
+  const response = await fetch('/api/globus_login_scopes', {
     method: 'GET',
     cache: 'no-store'
   });
