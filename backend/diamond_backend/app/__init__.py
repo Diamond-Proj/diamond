@@ -2,12 +2,14 @@ import os
 from datetime import datetime
 
 import logger
+import sqlalchemy as sa
 from dotenv import dotenv_values, load_dotenv
 from flask import Flask
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from diamond_backend.app.database.data_manager import Database
+from diamond_backend.app.database.db import db
 from diamond_backend.app.runtime_redis import RuntimeRedis
 
 # Load environment variables first, before any other imports or app creation
@@ -75,8 +77,17 @@ with app.app_context():
         check_and_create_functions,
     )
 
-    check_and_create_flows(app)
-    check_and_create_functions(app)
+    # `flask db upgrade` (and diamond_backend.db_upgrade) import this module
+    # too, before the migration that creates these tables has run.
+    inspector = sa.inspect(db.engine)
+    if inspector.has_table("flows") and inspector.has_table("functions"):
+        check_and_create_flows(app)
+        check_and_create_functions(app)
+    else:
+        logger.warning(
+            "flows/functions tables missing -- skipping startup flow creation "
+            "until migrations are applied"
+        )
 
 g_runtime_redis = RuntimeRedis()
 
