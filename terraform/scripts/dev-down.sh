@@ -27,7 +27,8 @@ fi
 
 # Grab the current images so `terraform destroy` has valid required vars
 # (their values don't matter for a destroy, just that they're set).
-terraform -chdir="$BRANCH_DIR" destroy -input=false \
+# GitHub Actions sets CI=true; nobody's there to answer the prompt.
+terraform -chdir="$BRANCH_DIR" destroy -input=false ${CI:+-auto-approve} \
   -var="branch_name=$BRANCH" \
   -var="backend_image=unused" \
   -var="frontend_image=unused" \

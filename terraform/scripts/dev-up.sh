@@ -91,7 +91,8 @@ fi
 echo "==> Applying terraform/environments/dev-branch (workspace: $BRANCH)..."
 terraform -chdir="$BRANCH_DIR" init -input=false
 terraform -chdir="$BRANCH_DIR" workspace select "$BRANCH" 2>/dev/null || terraform -chdir="$BRANCH_DIR" workspace new "$BRANCH"
-terraform -chdir="$BRANCH_DIR" apply -input=false \
+# GitHub Actions sets CI=true; nobody's there to answer the prompt.
+terraform -chdir="$BRANCH_DIR" apply -input=false ${CI:+-auto-approve} \
   -var="branch_name=$BRANCH" \
   -var="backend_image=$BACKEND_REPO:$TAG" \
   -var="frontend_image=$FRONTEND_REPO:$TAG"
