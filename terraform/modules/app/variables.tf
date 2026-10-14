@@ -120,7 +120,13 @@ variable "frontend_extra_env" {
 }
 
 variable "domain_name" {
-  description = "Custom domain for this instance's frontend (e.g. dev.diamondhpc.ai). When set, adds an ACM cert + HTTPS listener and redirects HTTP to HTTPS. DNS validation is manual since this project's domains aren't in Route 53 -- see the acm_validation_record output. Leave null to stay HTTP-only on the raw ALB DNS name (fine for throwaway branch environments)."
+  description = "Custom domain for this instance's frontend (e.g. dev.diamondhpc.ai). When set, adds an ACM cert + HTTPS listener and redirects HTTP to HTTPS. DNS validation is manual since this project's domains aren't in Route 53 -- see the acm_validation_records output. Leave null to stay HTTP-only on the raw ALB DNS name (fine for throwaway branch environments)."
   type        = string
   default     = null
+}
+
+variable "subject_alternative_names" {
+  description = "Extra hostnames the ACM cert should also cover (e.g. the apex diamondhpc.ai alongside domain_name = prod.diamondhpc.ai), so one cert serves every name that reaches this ALB. Each needs its own validation CNAME -- see acm_validation_records. Ignored when domain_name is null. Changing this replaces the cert; see alb.tf for the listener cleanup that replacement needs."
+  type        = list(string)
+  default     = []
 }
