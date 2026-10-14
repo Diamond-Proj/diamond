@@ -79,8 +79,7 @@ Run the `build-and-push` workflow manually (Actions -> build-and-push -> Run wor
 
 - `AWS_ACCESS_KEY_ID` / `AWS_SECRET_ACCESS_KEY` -- used for the image push, and for Terraform unless `TF_AWS_ACCESS_KEY_ID` / `TF_AWS_SECRET_ACCESS_KEY` are set to a separate, broader user. The Terraform user needs read/write on the state bucket, permission to manage the VPC/ECS/ALB/ACM/Cloud Map (+ its Route 53 private zones)/CloudWatch Logs resources each environment touches, describe on RDS/ECR, read on `diamond-*` Secrets Manager secrets, and `iam:GetRole`/`iam:PassRole` on `role/ecsTask*`. It doesn't need to *manage* IAM -- see `bootstrap-iam/` above.
 - `DEV_DB_URL` / `STAGING_DB_URL` / `PROD_DB_URL` -- full postgres connection string, passed as `TF_VAR_db_url` (see `modules/app`'s `db_url` for why it's not read from Secrets Manager).
-- `GLOBUS_CLIENT_SECRET`, set on each of the `dev` / `staging` / `prod` GitHub environments (not the repo) -- passed via `frontend_extra_env`.
-- `PORTAL_CLIENT_SECRET` secret and `PORTAL_CLIENT_ID` variable, on each of the same GitHub environments -- the backend's Globus confidential client, passed via `backend_extra_env`.
+- `GLOBUS_CLIENT_SECRET`, set on each of the `dev` / `staging` / `prod` GitHub environments (not the repo) -- passed via `frontend_extra_env`, and to the backend (with `NEXT_PUBLIC_GLOBUS_CLIENT_ID`) as `PORTAL_CLIENT_SECRET`/`PORTAL_CLIENT_ID` via `backend_extra_env`.
 
 **Required repo variables**: `AWS_REGION`, plus the frontend build args `FLASK_URL` and `NEXT_PUBLIC_GLOBUS_CLIENT_ID`.
 
