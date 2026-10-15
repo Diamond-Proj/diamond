@@ -165,6 +165,15 @@ def endpoint_initialization_status(
     for endpoint in endpoints_in_db:
         if endpoint.endpoint_uuid in endpoint_map:
             endpoint_map[endpoint.endpoint_uuid]["is_managed"] = endpoint.is_managed
+        elif endpoint.endpoint_status != "offline":
+            # Gone from Globus Compute (deleted or access revoked): the row keeps
+            # its configuration, but its stored status must stop saying online
+            # or the task and image pages keep offering it.
+            database.update_endpoint_status(
+                identity_id=identity_id,
+                endpoint_uuid=endpoint.endpoint_uuid,
+                endpoint_status="offline",
+            )
 
     return endpoint_map
 
@@ -207,10 +216,12 @@ def refresh_managed_endpoints(
                 endpoint_uuid=endpoint.endpoint_uuid
             )["status"]
         except Exception as e:
-            logger.error(
+            # A deleted endpoint raises here; leaving the old status in place
+            # would keep showing it as online.
+            logger.warning(
                 f"Error getting endpoint status for endpoint {endpoint.endpoint_name}: {e}"
             )
-            continue
+            endpoint_status = "offline"
         logger.info(f"Endpoint {endpoint.endpoint_name} status: {endpoint_status}")
         database.update_endpoint_status(
             identity_id=identity_id,

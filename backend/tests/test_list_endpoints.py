@@ -138,3 +138,36 @@ def test_refresh_only_polls_managed_endpoints(test_db):
 
     test_db.delete_endpoints(identity)
     test_db.delete_endpoints(other_identity)
+
+
+def test_refresh_marks_unreachable_endpoint_offline(test_db):
+    """An endpoint deleted on Globus Compute must stop reading as online."""
+    identity = f"TEST_IDENTITY_GONE_{random.randint(1, 100000)}"
+    gone_uuid = str(uuid.uuid4())
+    test_db.save_endpoint(
+        identity, "GONE_EP", "host", gone_uuid, "online", is_managed=True
+    )
+
+    client = Mock(spec=Client)
+    client.get_endpoint_status.side_effect = Exception("404 endpoint not found")
+    refresh_managed_endpoints(client, identity, test_db, logging.getLogger(__name__))
+
+    assert test_db.get_endpoints(identity_id=identity)[0].endpoint_status == "offline"
+    test_db.delete_endpoints(identity)
+
+
+def test_overview_marks_endpoints_missing_from_globus_offline(test_db, mock_gc_client):
+    """Opening the endpoints page reconciles stored rows with the live list."""
+    identity = f"TEST_IDENTITY_MISSING_{random.randint(1, 100000)}"
+    missing_uuid = str(uuid.uuid4())
+    test_db.save_endpoint(
+        identity, "MISSING_EP", "host", missing_uuid, "online", is_managed=True
+    )
+
+    eps = endpoint_initialization_status(
+        mock_gc_client, identity_id=identity, database=test_db
+    )
+
+    assert missing_uuid not in eps
+    assert test_db.get_endpoints(identity_id=identity)[0].endpoint_status == "offline"
+    test_db.delete_endpoints(identity)
