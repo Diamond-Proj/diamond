@@ -2,7 +2,7 @@
 # remote state lives in. Locking uses S3's native conditional-write locking
 # (`use_lockfile` in each environment's backend block) -- no DynamoDB table
 # needed. Apply this once, by hand, with local state, before touching
-# prod/staging/dev/dev-branch:
+# prod/staging/dev:
 #
 #   cd terraform/bootstrap
 #   terraform init

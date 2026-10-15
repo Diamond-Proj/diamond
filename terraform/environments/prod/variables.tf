@@ -52,7 +52,7 @@ variable "frontend_extra_env" {
 variable "domain_name" {
   description = "Custom domain for prod's frontend. See modules/app's variable of the same name. Defaulted (not left null) so a plain `terraform apply` without -var -- including the CI deploy -- can't accidentally destroy the ACM cert/HTTPS listener by reverting this to null."
   type        = string
-  default     = "prod.diamondhpc.ai"
+  default     = "diamondhpc.ai"
 }
 
 variable "subject_alternative_names" {

@@ -71,15 +71,3 @@ output "rds_security_group_id" {
 output "db_master_credentials_secret_arn" {
   value = module.database.master_credentials_secret_arn
 }
-
-output "db_admin_task_definition_arn" {
-  value = module.db_admin.task_definition_arn
-}
-
-output "db_admin_security_group_id" {
-  value = module.db_admin.security_group_id
-}
-
-output "db_admin_log_group_name" {
-  value = module.db_admin.log_group_name
-}

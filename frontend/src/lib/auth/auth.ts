@@ -11,6 +11,7 @@ import {
 } from './constants';
 import { TokenManagerServer } from './tokenManager.server';
 import type { TokenStore } from './types';
+import { fetchDynamicGlobusScopes } from './client'; // Import fetchDynamicGlobusScopes
 
 // Behind a proxy (e.g. the AWS ALB), request.nextUrl/request.url are built from
 // the server's own listen address (localhost:3000), not the public host. Prefer
@@ -78,21 +79,28 @@ function getExpiredSessionRedirect(
   return createSignInRedirect(request, true);
 }
 
-function initiateGlobusLogin(request: NextRequest): NextResponse {
+async function initiateGlobusLogin(request: NextRequest): Promise<NextResponse> {
   try {
     const clientId = process.env.NEXT_PUBLIC_GLOBUS_CLIENT_ID;
-    const scopes = process.env.NEXT_PUBLIC_GLOBUS_SCOPES;
+    const staticScopes = process.env.NEXT_PUBLIC_GLOBUS_SCOPES
+      ? process.env.NEXT_PUBLIC_GLOBUS_SCOPES.split(' ')
+      : [];
     const redirectUri = `${getBaseUrl(request)}/auth/callback`;
 
     if (!clientId) {
       throw new Error('GLOBUS_CLIENT_ID not configured');
     }
 
+    const dynamicScopes = await fetchDynamicGlobusScopes();
+    const allScopes = Array.from(
+      new Set([...DEFAULT_GLOBUS_SCOPES.split(' '), ...staticScopes, ...dynamicScopes])
+    ).join(' ');
+
     const params = new URLSearchParams({
       client_id: clientId,
       redirect_uri: redirectUri,
       response_type: 'code',
-      scope: scopes || DEFAULT_GLOBUS_SCOPES,
+      scope: allScopes,
       access_type: 'offline'
     });
 
