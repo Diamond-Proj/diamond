@@ -160,19 +160,24 @@ def test_image_builder_honors_build_location_and_refuses_foreign_names(
     client, monkeypatch, test_endpoint_anvil
 ):
     captured = {}
-    monkeypatch.setattr(
-        "diamond_backend.app.images.render_task_template_script",
-        lambda template_name, context: captured.setdefault("context", context)
-        and "echo",
-    )
-    monkeypatch.setattr(
-        "diamond_backend.app.images.submit_batch_script_task",
-        lambda **kwargs: captured.setdefault("submission", kwargs)
-        and {
+
+    def fake_render(template_name, context):
+        captured["context"] = context
+        return "echo"
+
+    def fake_submit(**kwargs):
+        captured["submission"] = kwargs
+        return {
             "task_id": f"GC-{uuid4().hex[:6]}",
             "batch_job_id": "7",
             "task_name": kwargs["task_name"],
-        },
+        }
+
+    monkeypatch.setattr(
+        "diamond_backend.app.images.render_task_template_script", fake_render
+    )
+    monkeypatch.setattr(
+        "diamond_backend.app.images.submit_batch_script_task", fake_submit
     )
     monkeypatch.setattr(
         "diamond_backend.app.images.load_container_module_command", lambda host: ""
