@@ -60,7 +60,7 @@
       "key": "container_path",
       "label": "SAM3 Container (.sif)",
       "required": true,
-      "help": "SAM3 Apptainer image on the cluster (.sif file or sandbox directory)."
+      "help": "SAM3 Apptainer image on the cluster (.sif file or sandbox directory). On DeltaAI (aarch64) use /projects/bcrc/diamond/images/sam3_aarch64.sif."
     }
   ]
 }

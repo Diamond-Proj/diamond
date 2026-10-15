@@ -42,8 +42,8 @@
     {
       "key": "finetuned_model_path",
       "label": "Output Directory",
-      "placeholder": "/projects/bcrc/diamond/sam3_ft/models",
-      "required": true
+      "placeholder": "Defaults to models in the Diamond working directory",
+      "help": "Where the finetuned .pt is written. Relative paths resolve under the Diamond working directory; shared project directories are usually read-only for other members."
     },
     {
       "key": "finetuned_model_name",
@@ -68,7 +68,7 @@
       "key": "container_path",
       "label": "SAM3 Container (.sif)",
       "required": true,
-      "help": "SAM3 Apptainer image on the cluster (.sif file or sandbox directory)."
+      "help": "SAM3 Apptainer image on the cluster (.sif file or sandbox directory). On DeltaAI (aarch64) use /projects/bcrc/diamond/images/sam3_aarch64.sif."
     }
   ]
 }

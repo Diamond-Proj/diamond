@@ -164,8 +164,12 @@ fetch_task_status = _make_shell_function(
     "sacct -j {batch_job_id} -o State -n | head -n 1"
 )
 
+# The unquoted assignment lets bash expand ~, $HOME and $USER; `pwd -P` prints
+# the canonical directory that the rest of Diamond then uses verbatim. Prints 0
+# when the directory is missing or not writable.
 check_diamond_work_path = _make_shell_function(
-    "if [ -d {diamond_work_path} ] && [ -w {diamond_work_path} ]; then echo 1; else echo 0; fi"
+    'p={diamond_work_path}; if [ -d "$p" ] && [ -w "$p" ]; '
+    'then cd "$p" && pwd -P; else echo 0; fi'
 )
 
 

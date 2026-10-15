@@ -663,12 +663,18 @@ def diamond_endpoint_submit_job():
             )
 
     task_name = str(task_name)
+    # Everything a run writes under the Diamond directory (.submit, logs, staged
+    # uploads, default outputs) is named after this per-run name, so submitting
+    # the same task name again cannot overwrite an earlier run's files.
+    task_run_name = (
+        f"{task_name}-{time.strftime('%Y%m%d-%H%M%S')}-{uuid.uuid4().hex[:6]}"
+    )
 
     location = g_database.get_diamond_dir(
         endpoint_uuid=endpoint_id, identity_id=identity_id
     )
-    stdout_path = os.path.join(location, "logs", task_name + ".stdout")
-    stderr_path = os.path.join(location, "logs", task_name + ".stderr")
+    stdout_path = os.path.join(location, "logs", task_run_name + ".stdout")
+    stderr_path = os.path.join(location, "logs", task_run_name + ".stderr")
 
     endpoint_host = g_database.get_endpoint_host(endpoint_uuid=endpoint_id)
     container_module_command = load_container_module_command(endpoint_host)
@@ -679,7 +685,7 @@ def diamond_endpoint_submit_job():
                 endpoint_id=endpoint_id,
                 identity_id=identity_id,
                 location=location,
-                task_name=task_name,
+                task_name=task_run_name,
             )
         except ValueError as e:
             return jsonify({"error": str(e)}), 400
@@ -687,8 +693,8 @@ def diamond_endpoint_submit_job():
             return jsonify(exc.to_response_payload()), exc.http_status
         render_context = {
             **task_define,
-            "task_name": task_name,
-            "taskName": task_name,
+            "task_name": task_run_name,
+            "taskName": task_run_name,
             "location": location,
             "stdout_path": stdout_path,
             "stderr_path": stderr_path,
@@ -719,7 +725,7 @@ def diamond_endpoint_submit_job():
             return jsonify({"error": f"Failed to render task template: {e}"}), 400
     else:
         submit_task_script = render_submit_task_script(
-            task_name=task_name,
+            task_name=task_run_name,
             location=location,
             stdout_path=stdout_path,
             stderr_path=stderr_path,

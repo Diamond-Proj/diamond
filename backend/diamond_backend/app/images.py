@@ -66,6 +66,13 @@ def diamond_endpoint_image_builder():
             400,
         )
 
+    # Container.name is the table's primary key and save_container merges on it.
+    existing = g_database.get_container_by_name(name)
+    if existing is not None and existing.identity_id != identity_id:
+        return jsonify(
+            {"error": f"Container name '{name}' is already used by another user"}
+        ), 409
+
     if reservation and not str(reservation).startswith("--reservation="):
         reservation = f"--reservation={reservation}"
 
@@ -95,11 +102,14 @@ def diamond_endpoint_image_builder():
         time_duration,
     )
 
-    location = g_database.get_diamond_dir(
+    diamond_dir = g_database.get_diamond_dir(
         endpoint_uuid=endpoint_id, identity_id=identity_id
     )
-    stdout_path = os.path.join(location, "logs", name + ".stdout")
-    stderr_path = os.path.join(location, "logs", name + ".stderr")
+    # The form's optional build location decides where the .def and .sif land;
+    # logs stay in the Diamond directory where the build-log reader looks.
+    location = str(request_data.get("location") or "").strip() or diamond_dir
+    stdout_path = os.path.join(diamond_dir, "logs", name + ".stdout")
+    stderr_path = os.path.join(diamond_dir, "logs", name + ".stderr")
     artifact_path = os.path.join(location, name + ".sif")
 
     endpoint_host = g_database.get_endpoint_host(endpoint_uuid=endpoint_id)

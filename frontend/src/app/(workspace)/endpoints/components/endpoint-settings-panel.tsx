@@ -322,12 +322,15 @@ export function EndpointSettingsPanel({
         credentials: 'include'
       });
 
+      const data = await response.json().catch(() => ({}));
       if (!response.ok) {
-        throw new Error('Failed to save diamond directory');
+        throw new Error(data.error || 'Failed to save diamond directory');
       }
 
-      setSavedPath(normalizedPath);
-      setPath(normalizedPath);
+      // The endpoint expands ~ and $HOME; show the directory it stored.
+      const storedPath = toEditableWorkPath(data.diamond_dir) || normalizedPath;
+      setSavedPath(storedPath);
+      setPath(storedPath);
 
       toast({
         title: 'Success',
@@ -337,7 +340,10 @@ export function EndpointSettingsPanel({
       console.error('Error saving diamond directory:', error);
       toast({
         title: 'Error',
-        description: 'Failed to save work path. Please try again.',
+        description:
+          error instanceof Error
+            ? error.message
+            : 'Failed to save work path. Please try again.',
         variant: 'destructive'
       });
     } finally {
