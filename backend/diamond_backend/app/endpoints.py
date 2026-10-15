@@ -1,14 +1,11 @@
 import logging
-import os
+import time
 
 from flask import jsonify, request
+from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import RequestMalformed
-from diamond_backend.app.task_runtime import (
-    TaskSubmissionError,
-    _wait_for_compute_result,
-)
 from diamond_backend.app.utils.config_loader import load_partitions
 from diamond_backend.app.utils.data_prep import (
     endpoint_initialization_status,
@@ -18,13 +15,14 @@ from diamond_backend.app.utils.data_prep import (
     register_endpoint,
 )
 from diamond_backend.app.utils.decorators import authenticated
-from diamond_backend.app.utils.functions import (
-    check_diamond_work_path,
-    create_diamond_dir,
-)
+from diamond_backend.app.utils.functions import prepare_diamond_work_path
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
 
 logger = logging.getLogger(__name__)
+
+# Workers on a Slurm-backed MEP can take a while to start; the old code waited
+# without limit.
+SET_WORK_PATH_TIMEOUT_SECONDS = 120
 
 
 @app.route("/api/refresh_managed_endpoints", methods=["POST"])
@@ -68,51 +66,35 @@ def diamond_set_diamond_work_path():
         identity_id=identity_id, endpoint_uuid=endpoint_uuid
     )
 
-    def run_on_endpoint(shell_function, kwargs):
-        function_id = globus_compute_client.register_function(shell_function)
-        task_id = globus_compute_wrapped_run(
-            globus_compute_client,
-            endpoint_id=endpoint_uuid,
-            function_id=function_id,
-            user_endpoint_config=user_endpoint_config,
-            kwargs=kwargs,
-        )
-        return _wait_for_compute_result(globus_compute_client, task_id)
+    # A single task checks the base path and creates the directories; the
+    # command itself is instant, the wait is for the endpoint to pick it up.
+    function_id = globus_compute_client.register_function(prepare_diamond_work_path)
+    task_id = globus_compute_wrapped_run(
+        globus_compute_client,
+        endpoint_id=endpoint_uuid,
+        function_id=function_id,
+        user_endpoint_config=user_endpoint_config,
+        kwargs={"diamond_work_path": diamond_work_path},
+    )
+    deadline = time.monotonic() + SET_WORK_PATH_TIMEOUT_SECONDS
+    while True:
+        try:
+            result = globus_compute_client.get_result(task_id)
+            break
+        except TaskPending:
+            if time.monotonic() > deadline:
+                return jsonify(
+                    {"error": "The endpoint did not run the directory setup in time"}
+                ), 504
+            time.sleep(2)
 
-    try:
-        # The endpoint expands ~/$HOME and prints the canonical directory, or 0
-        # when it is missing or not writable.
-        check_result = run_on_endpoint(
-            check_diamond_work_path, {"diamond_work_path": diamond_work_path}
+    diamond_dir = str(result.stdout or "").strip()
+    if result.returncode != 0 or not diamond_dir.startswith("/"):
+        error = (
+            str(result.stderr or "").strip()
+            or "Failed to prepare the Diamond directory"
         )
-        resolved_base = check_result.stdout.strip()
-        if not resolved_base.startswith("/"):
-            return jsonify(
-                {"error": "Diamond work path does not exist or is not writable"}
-            ), 400
-
-        # A base that already is a "diamond" directory is used as-is.
-        if os.path.basename(resolved_base) == "diamond":
-            diamond_dir = resolved_base
-        else:
-            diamond_dir = os.path.join(resolved_base, "diamond")
-        diamond_log_dir = os.path.join(diamond_dir, "logs")
-        diamond_image_dir = os.path.join(diamond_dir, "images")
-
-        create_result = run_on_endpoint(
-            create_diamond_dir,
-            {
-                "diamond_dir": diamond_dir,
-                "diamond_log_dir": diamond_log_dir,
-                "diamond_image_dir": diamond_image_dir,
-            },
-        )
-        if create_result.returncode != 0:
-            return jsonify(
-                {"error": f"Failed to create {diamond_dir}: {create_result.stderr}"}
-            ), 400
-    except TaskSubmissionError as exc:
-        return jsonify(exc.to_response_payload()), exc.http_status
+        return jsonify({"error": error}), 400
 
     g_database.save_diamond_dir(
         identity_id=identity_id,

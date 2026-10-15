@@ -164,17 +164,19 @@ fetch_task_status = _make_shell_function(
     "sacct -j {batch_job_id} -o State -n | head -n 1"
 )
 
-# The unquoted assignment lets bash expand ~, $HOME and $USER; `pwd -P` prints
-# the canonical directory that the rest of Diamond then uses verbatim. Prints 0
-# when the directory is missing or not writable.
-check_diamond_work_path = _make_shell_function(
-    'p={diamond_work_path}; if [ -d "$p" ] && [ -w "$p" ]; '
-    'then cd "$p" && pwd -P; else echo 0; fi'
-)
-
-
-create_diamond_dir = _make_shell_function(
-    "mkdir -p {diamond_dir} && mkdir -p {diamond_log_dir} && mkdir -p {diamond_image_dir}"
+# One round trip to the endpoint: the unquoted assignment lets bash expand ~,
+# $HOME and $USER; a missing or read-only base fails with a message; otherwise
+# the Diamond directory (a base already named "diamond" is used as-is) and its
+# logs/ and images/ subdirectories are created and the canonical path printed.
+prepare_diamond_work_path = _make_shell_function(
+    "base={diamond_work_path}; "
+    'if ! [ -d "$base" ] || ! [ -w "$base" ]; then '
+    'echo "Diamond work path does not exist or is not writable: $base" >&2; '
+    "exit 1; fi; "
+    'base="$(cd "$base" && pwd -P)"; '
+    'if [ "$(basename "$base")" = diamond ]; then dir="$base"; '
+    'else dir="$base/diamond"; fi; '
+    'mkdir -p "$dir/logs" "$dir/images" && echo "$dir"'
 )
 
 

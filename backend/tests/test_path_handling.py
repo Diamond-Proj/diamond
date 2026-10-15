@@ -14,16 +14,18 @@ class FakeShellResult:
         self.returncode = returncode
 
 
-def _patch_work_path_round_trips(monkeypatch, results):
-    """Replace the Globus Compute round trips with canned ShellResults."""
+def _patch_work_path_round_trip(monkeypatch, result):
+    """Replace the single Globus Compute round trip with a canned ShellResult."""
     from diamond_backend.app import endpoints as endpoints_module
 
     calls = []
-    pending = list(results)
 
     class FakeClient:
         def register_function(self, func):
             return "fn"
+
+        def get_result(self, task_id):
+            return result
 
     monkeypatch.setattr(
         endpoints_module, "initialize_globus_compute_client", FakeClient
@@ -31,12 +33,7 @@ def _patch_work_path_round_trips(monkeypatch, results):
     monkeypatch.setattr(
         endpoints_module,
         "globus_compute_wrapped_run",
-        lambda client, **kw: calls.append(kw["kwargs"]) or f"task-{len(calls)}",
-    )
-    monkeypatch.setattr(
-        endpoints_module,
-        "_wait_for_compute_result",
-        lambda client, task_id: pending.pop(0),
+        lambda client, **kw: calls.append(kw["kwargs"]) or "task-1",
     )
     return calls
 
@@ -45,8 +42,8 @@ def test_set_work_path_resolves_and_creates_directory(
     client, monkeypatch, test_identity, test_endpoint_frontera
 ):
     endpoint_uuid = test_endpoint_frontera[2]
-    calls = _patch_work_path_round_trips(
-        monkeypatch, [FakeShellResult(stdout="/u/alice/work\n"), FakeShellResult()]
+    calls = _patch_work_path_round_trip(
+        monkeypatch, FakeShellResult(stdout="/u/alice/work/diamond\n")
     )
 
     response = client.post(
@@ -56,7 +53,7 @@ def test_set_work_path_resolves_and_creates_directory(
 
     assert response.status_code == 200, response.get_json()
     assert response.get_json()["diamond_dir"] == "/u/alice/work/diamond"
-    assert calls[1]["diamond_dir"] == "/u/alice/work/diamond"
+    assert calls == [{"diamond_work_path": "~/work"}]
     assert (
         g_database.get_diamond_dir(
             identity_id=test_identity, endpoint_uuid=endpoint_uuid
@@ -68,25 +65,13 @@ def test_set_work_path_resolves_and_creates_directory(
     )
 
 
-def test_set_work_path_rejects_unwritable_directory_and_failed_mkdir(
+def test_set_work_path_reports_endpoint_failure(
     client, monkeypatch, test_identity, test_endpoint_frontera
 ):
     endpoint_uuid = test_endpoint_frontera[2]
-
-    calls = _patch_work_path_round_trips(monkeypatch, [FakeShellResult(stdout="0\n")])
-    response = client.post(
-        "/api/set_diamond_work_path",
-        json={"endpoint_uuid": endpoint_uuid, "diamond_work_path": "/projects/x"},
-    )
-    assert response.status_code == 400
-    assert len(calls) == 1  # mkdir never ran
-
-    _patch_work_path_round_trips(
+    _patch_work_path_round_trip(
         monkeypatch,
-        [
-            FakeShellResult(stdout="/projects/shared\n"),
-            FakeShellResult(stderr="Permission denied", returncode=1),
-        ],
+        FakeShellResult(stderr="mkdir: Permission denied", returncode=1),
     )
     response = client.post(
         "/api/set_diamond_work_path",
