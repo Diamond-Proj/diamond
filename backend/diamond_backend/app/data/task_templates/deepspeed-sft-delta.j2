@@ -1,12 +1,37 @@
-resolved_finetuned_model_path="$(cat <<'DIAMOND_FINETUNED_MODEL_PATH'
-{{ finetuned_model_path }}
+diamond_resolve_path() {
+  # $1 = raw value, $2 = base dir for relative (non-empty) values.
+  # Trims surrounding whitespace, expands $HOME/$USER/~, and prefixes a
+  # non-empty relative value with the base dir. Empty stays empty.
+  local value="$1" base="$2"
+  value="${value#"${value%%[![:space:]]*}"}"
+  value="${value%"${value##*[![:space:]]}"}"
+  value="${value//\$\{HOME\}/$HOME}"
+  value="${value//\$HOME/$HOME}"
+  value="${value//\$\{USER\}/$USER}"
+  value="${value//\$USER/$USER}"
+  case "$value" in
+    "~") value="$HOME" ;;
+    "~/"*) value="$HOME/${value#\~/}" ;;
+  esac
+  if [[ -n "$value" && "$value" != /* ]]; then
+    value="$base/$value"
+  fi
+  printf '%s' "$value"
+}
+
+
+raw_finetuned_model_path="$(cat <<'DIAMOND_FINETUNED_MODEL_PATH'
+{{ finetuned_model_path | default('', true) }}
 DIAMOND_FINETUNED_MODEL_PATH
 )"
-resolved_finetuned_model_path="${resolved_finetuned_model_path//\$\{HOME\}/$HOME}"
-resolved_finetuned_model_path="${resolved_finetuned_model_path//\$HOME/$HOME}"
-resolved_finetuned_model_path="${resolved_finetuned_model_path//\$\{USER\}/$USER}"
-resolved_finetuned_model_path="${resolved_finetuned_model_path//\$USER/$USER}"
+resolved_finetuned_model_path="$(diamond_resolve_path "$raw_finetuned_model_path" "{{ location }}")"
+if [[ -z "$resolved_finetuned_model_path" ]]; then
+  resolved_finetuned_model_path="{{ location }}/models"
+fi
 resolved_artifact_path="$resolved_finetuned_model_path/{{ finetuned_model_name }}"
+
+# apptainer refuses to bind a source directory that does not exist yet.
+mkdir -p "$resolved_finetuned_model_path"
 
 cat << EOF > {{ location }}/{{ task_name }}.submit
 #!/bin/bash

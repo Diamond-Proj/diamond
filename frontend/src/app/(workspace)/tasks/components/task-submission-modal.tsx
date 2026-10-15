@@ -435,21 +435,15 @@ export function TaskSubmissionModal({
     isLlmfluxTemplate
   ]);
 
-  const templateHasUpload = activeCustomFields.some((f) => f.type === 'file');
-
   const validateForm = () => {
     const newErrors: Record<string, string> = {};
 
     if (!formData.taskName.trim()) {
       newErrors.taskName = 'Task name is required';
-    } else if (
-      templateHasUpload &&
-      !isSafePathComponent(formData.taskName.trim())
-    ) {
-      // Matches the backend rule: task_name is a staging-directory component
-      // when the task carries an upload.
+    } else if (!isSafePathComponent(formData.taskName.trim())) {
+      // The task name names the job script and log files on the cluster.
       newErrors.taskName =
-        "For tasks with an uploaded file, the task name can only contain letters, numbers, '.', '-', '_'";
+        "Task name can only contain letters, numbers, '.', '-', '_'";
     }
     if (!formData.endpoint) {
       newErrors.endpoint = 'Endpoint is required';

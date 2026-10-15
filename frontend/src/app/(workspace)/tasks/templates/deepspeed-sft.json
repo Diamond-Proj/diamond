@@ -38,8 +38,8 @@
     {
       "key": "finetuned_model_path",
       "label": "Output Directory",
-      "placeholder": "/work/nvme/bcrc/hxie6/output",
-      "required": true
+      "placeholder": "Defaults to models in the Diamond working directory",
+      "help": "Where the finetuned model directory is written. Relative paths resolve under the Diamond working directory; shared project directories are usually read-only for other members."
     },
     {
       "key": "finetuned_model_name",
@@ -50,7 +50,7 @@
       "key": "container_path",
       "label": "DeepSpeed Container (.sif)",
       "required": true,
-      "help": "DeepSpeed-Chat Apptainer image on the cluster (.sif file or sandbox directory)."
+      "help": "DeepSpeed-Chat Apptainer image on the cluster (.sif file or sandbox directory). On DeltaAI (aarch64) use /projects/bcrc/diamond/images/deepspeed_chat_aarch64.sif."
     }
   ]
 }

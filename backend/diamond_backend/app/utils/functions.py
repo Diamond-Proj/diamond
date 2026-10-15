@@ -164,13 +164,24 @@ fetch_task_status = _make_shell_function(
     "sacct -j {batch_job_id} -o State -n | head -n 1"
 )
 
-check_diamond_work_path = _make_shell_function(
-    "if [ -d {diamond_work_path} ] && [ -w {diamond_work_path} ]; then echo 1; else echo 0; fi"
-)
-
-
-create_diamond_dir = _make_shell_function(
-    "mkdir -p {diamond_dir} && mkdir -p {diamond_log_dir} && mkdir -p {diamond_image_dir}"
+# One round trip to the endpoint: the unquoted assignment lets bash expand ~,
+# $HOME and $USER; a relative path is taken under $HOME rather than the
+# worker's working directory; the base is created if missing (users type a new
+# directory and expect Diamond to make it); a base that cannot be created or
+# written fails with a message; otherwise the Diamond directory (a base already
+# named "diamond" is used as-is) and its logs/ and images/ subdirectories are
+# created and the canonical path printed.
+prepare_diamond_work_path = _make_shell_function(
+    "base={diamond_work_path}; "
+    'case "$base" in /*) ;; *) base="$HOME/$base" ;; esac; '
+    'mkdir -p "$base"; '
+    'if ! [ -d "$base" ] || ! [ -w "$base" ]; then '
+    'echo "Cannot create or write to the Diamond work path: $base" >&2; '
+    "exit 1; fi; "
+    'base="$(cd "$base" && pwd -P)"; '
+    'if [ "$(basename "$base")" = diamond ]; then dir="$base"; '
+    'else dir="$base/diamond"; fi; '
+    'mkdir -p "$dir/logs" "$dir/images" && echo "$dir"'
 )
 
 

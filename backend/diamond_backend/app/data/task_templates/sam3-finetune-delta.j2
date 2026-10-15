@@ -53,6 +53,7 @@ cat << EOF > {{ location }}/{{ task_name }}.submit
 apptainer run --nv \
   -B /projects:/projects \
   -B /work:/work \
+  -B /scratch:/scratch \
   "{{ container_path or '/projects/bcrc/diamond/images/sam3.sif' }}" \
   finetune \
     --model "{{ base_model_path }}" \

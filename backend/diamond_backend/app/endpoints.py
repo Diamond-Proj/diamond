@@ -1,8 +1,8 @@
 import logging
-import os
 import time
 
 from flask import jsonify, request
+from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import RequestMalformed
@@ -15,13 +15,14 @@ from diamond_backend.app.utils.data_prep import (
     register_endpoint,
 )
 from diamond_backend.app.utils.decorators import authenticated
-from diamond_backend.app.utils.functions import (
-    check_diamond_work_path,
-    create_diamond_dir,
-)
+from diamond_backend.app.utils.functions import prepare_diamond_work_path
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
 
 logger = logging.getLogger(__name__)
+
+# Workers on a Slurm-backed MEP can take a while to start; the old code waited
+# without limit.
+SET_WORK_PATH_TIMEOUT_SECONDS = 120
 
 
 @app.route("/api/refresh_managed_endpoints", methods=["POST"])
@@ -58,69 +59,49 @@ def diamond_load_accounts_partitions():
 def diamond_set_diamond_work_path():
     identity_id = request.cookies.get("primary_identity")
     endpoint_uuid = request.json.get("endpoint_uuid")
-    diamond_work_path = request.json.get("diamond_work_path")
-
-    # Handle diamond path logic: if path ends with "diamond", don't add it again
-    if diamond_work_path.endswith("diamond"):
-        diamond_dir = diamond_work_path
-        diamond_log_dir = os.path.join(diamond_work_path, "logs")
-        diamond_image_dir = os.path.join(diamond_work_path, "images")
-    else:
-        diamond_dir = os.path.join(diamond_work_path, "diamond")
-        diamond_log_dir = os.path.join(diamond_dir, "logs")
-        diamond_image_dir = os.path.join(diamond_dir, "images")
+    diamond_work_path = str(request.json.get("diamond_work_path") or "").strip()
 
     globus_compute_client = initialize_globus_compute_client()
-    check_diamond_work_path_func_id = globus_compute_client.register_function(
-        check_diamond_work_path
-    )
     user_endpoint_config = g_database.get_endpoint_user_config(
         identity_id=identity_id, endpoint_uuid=endpoint_uuid
     )
-    check_diamond_work_path_task_id = globus_compute_wrapped_run(
+
+    # A single task checks the base path and creates the directories; the
+    # command itself is instant, the wait is for the endpoint to pick it up.
+    function_id = globus_compute_client.register_function(prepare_diamond_work_path)
+    task_id = globus_compute_wrapped_run(
         globus_compute_client,
         endpoint_id=endpoint_uuid,
-        function_id=check_diamond_work_path_func_id,
+        function_id=function_id,
         user_endpoint_config=user_endpoint_config,
         kwargs={"diamond_work_path": diamond_work_path},
     )
-    check_diamond_work_path_task_status = globus_compute_client.get_task(
-        check_diamond_work_path_task_id
-    )
-    while check_diamond_work_path_task_status["pending"]:
-        time.sleep(2)
-        check_diamond_work_path_task_status = globus_compute_client.get_task(
-            check_diamond_work_path_task_id
+    deadline = time.monotonic() + SET_WORK_PATH_TIMEOUT_SECONDS
+    while True:
+        try:
+            result = globus_compute_client.get_result(task_id)
+            break
+        except TaskPending:
+            if time.monotonic() > deadline:
+                return jsonify(
+                    {"error": "The endpoint did not run the directory setup in time"}
+                ), 504
+            time.sleep(2)
+
+    diamond_dir = str(result.stdout or "").strip()
+    if result.returncode != 0 or not diamond_dir.startswith("/"):
+        error = (
+            str(result.stderr or "").strip()
+            or "Failed to prepare the Diamond directory"
         )
-        continue
-    check_diamond_work_path_task_result = globus_compute_client.get_result(
-        check_diamond_work_path_task_id
-    )
-    if check_diamond_work_path_task_result == 0:
-        return jsonify(
-            {"error": "Diamond work path does not exist or is not writable"}
-        ), 400
-    create_diamond_dir_func_id = globus_compute_client.register_function(
-        create_diamond_dir
-    )
-    globus_compute_wrapped_run(
-        globus_compute_client,
-        endpoint_id=endpoint_uuid,
-        function_id=create_diamond_dir_func_id,
-        user_endpoint_config=user_endpoint_config,
-        kwargs={
-            "diamond_dir": diamond_dir,
-            "diamond_log_dir": diamond_log_dir,
-            "diamond_image_dir": diamond_image_dir,
-        },
-    )
+        return jsonify({"error": error}), 400
 
     g_database.save_diamond_dir(
         identity_id=identity_id,
         endpoint_uuid=endpoint_uuid,
         diamond_dir=diamond_dir,
     )
-    return jsonify({"status": "success"})
+    return jsonify({"status": "success", "diamond_dir": diamond_dir})
 
 
 @app.route("/api/endpoint_overview", methods=["GET"])
@@ -193,7 +174,8 @@ def diamond_get_diamond_dir():
     diamond_dir = g_database.get_diamond_dir(
         identity_id=identity_id, endpoint_uuid=endpoint_uuid
     )
-    return jsonify({"diamond_dir": diamond_dir})
+    # An endpoint that was never configured stores "".
+    return jsonify({"diamond_dir": diamond_dir or None})
 
 
 @app.route("/api/list_partitions", methods=["POST"])
