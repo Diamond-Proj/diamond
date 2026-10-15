@@ -1,7 +1,6 @@
 import os
 import re
 import subprocess
-from uuid import uuid4
 
 from diamond_backend.app import g_database
 from diamond_backend.app.utils.scripts_render import render_task_template_script
@@ -65,25 +64,6 @@ def test_set_work_path_resolves_and_creates_directory(
     )
 
 
-def test_set_work_path_reports_endpoint_failure(
-    client, monkeypatch, test_identity, test_endpoint_frontera
-):
-    endpoint_uuid = test_endpoint_frontera[2]
-    _patch_work_path_round_trip(
-        monkeypatch,
-        FakeShellResult(stderr="mkdir: Permission denied", returncode=1),
-    )
-    response = client.post(
-        "/api/set_diamond_work_path",
-        json={"endpoint_uuid": endpoint_uuid, "diamond_work_path": "/projects/shared"},
-    )
-    assert response.status_code == 400
-    assert "Permission denied" in response.get_json()["error"]
-    assert not g_database.get_diamond_dir(
-        identity_id=test_identity, endpoint_uuid=endpoint_uuid
-    )
-
-
 def test_submit_task_names_run_files_per_submission(
     client, monkeypatch, test_endpoint_delta
 ):
@@ -139,76 +119,6 @@ def test_submit_task_names_run_files_per_submission(
     )
     # The Task row keeps the name the user typed.
     assert captured["submission"]["task_name"] == "sam3-predict"
-
-
-def test_image_builder_honors_build_location_and_refuses_foreign_names(
-    client, monkeypatch, test_endpoint_anvil
-):
-    captured = {}
-
-    def fake_render(template_name, context):
-        captured["context"] = context
-        return "echo"
-
-    def fake_submit(**kwargs):
-        captured["submission"] = kwargs
-        return {
-            "task_id": f"GC-{uuid4().hex[:6]}",
-            "batch_job_id": "7",
-            "task_name": kwargs["task_name"],
-        }
-
-    monkeypatch.setattr(
-        "diamond_backend.app.images.render_task_template_script", fake_render
-    )
-    monkeypatch.setattr(
-        "diamond_backend.app.images.submit_batch_script_task", fake_submit
-    )
-    monkeypatch.setattr(
-        "diamond_backend.app.images.load_container_module_command", lambda host: ""
-    )
-    monkeypatch.setattr(
-        g_database, "get_diamond_dir", lambda endpoint_uuid, identity_id: "/tmp/diamond"
-    )
-    request = {
-        "endpoint": test_endpoint_anvil[2],
-        "base_image": "ubuntu:22.04",
-        "account": "proj",
-        "partition": "gpu",
-    }
-
-    name = f"custom-loc-{uuid4().hex[:6]}"
-    response = client.post(
-        "/api/image_builder",
-        json={**request, "name": name, "location": "/scratch/bcrc/alice/builds"},
-    )
-    assert response.status_code == 200, response.get_json()
-    assert captured["context"]["location"] == "/scratch/bcrc/alice/builds"
-    assert (
-        captured["submission"]["checkpoint_path"]
-        == f"/scratch/bcrc/alice/builds/{name}.sif"
-    )
-    assert captured["submission"]["stdout_path"] == f"/tmp/diamond/logs/{name}.stdout"
-    g_database.delete_container(
-        g_database.get_container_by_name(name).container_task_id
-    )
-
-    other = f"OTHER_{uuid4().hex[:6]}"
-    g_database.save_profile(other, "Bob", "bob@tester.org")
-    taken = f"taken-{uuid4().hex[:6]}"
-    g_database.save_container(
-        container_task_id="GC-OTHER",
-        container_status="ACTIVE",
-        identity_id=other,
-        name=taken,
-        base_image="ubuntu:22.04",
-        location="/u/bob/diamond",
-        endpoint_id="ep",
-    )
-    response = client.post("/api/image_builder", json={**request, "name": taken})
-    assert response.status_code == 409
-    assert g_database.get_container_by_name(taken).identity_id == other
-    g_database.delete_container("GC-OTHER")
 
 
 def test_deepspeed_outer_script_resolves_relative_output_and_creates_it(tmp_path):

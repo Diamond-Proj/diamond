@@ -71,7 +71,7 @@ def test_user_init_on_endpoint_managed_status_set(
     endpoint_uuid = test_endpoint_anvil[2]
 
     assert test_db
-    test_id = f"TEST_IDENTITY_{random.randint(1, 100)}"
+    test_id = f"TEST_IDENTITY_JOE_{uuid.uuid4().hex[:8]}"
     test_db.save_profile(test_id, "Joe", "joe@tester.org")
 
     identity = test_db.load_profile(test_id)
