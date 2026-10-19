@@ -57,6 +57,8 @@ def test_normalize_work_path_rejects_missing(raw):
         "/..",
         "/u/username/..",
         "/u/username/a/../b",
+        "/scratch/user\x00/diamond",
+        "/scratch/user/diamond\x00",
     ],
 )
 def test_normalize_work_path_rejects_invalid(raw):
@@ -128,6 +130,14 @@ def test_resolve_diamond_dirs(work_path, diamond_dir):
         ),
         (
             {"json": {"endpoint_uuid": "EP", "diamond_work_path": "/u/link/../x"}},
+            "INVALID_WORK_PATH",
+        ),
+        (
+            {
+                "data": '{"endpoint_uuid": "EP", '
+                '"diamond_work_path": "/scratch/user\\u0000/diamond"}',
+                "content_type": "application/json",
+            },
             "INVALID_WORK_PATH",
         ),
     ],

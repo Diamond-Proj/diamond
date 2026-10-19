@@ -18,6 +18,9 @@ def normalize_work_path(raw_path: object) -> str:
     if not isinstance(raw_path, str) or not raw_path.strip():
         raise RequestMalformed("diamond_work_path")
     path = raw_path.strip()
+    # NUL is invalid in paths and process arguments
+    if "\x00" in path:
+        raise InvalidWorkPath("Work path must not contain NUL characters.", raw_path)
     if path.startswith("~"):
         raise InvalidWorkPath(
             "Work path must be absolute; '~' is not expanded. "
