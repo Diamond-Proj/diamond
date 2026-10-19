@@ -7,7 +7,12 @@ from datetime import datetime
 from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import g_database, g_runtime_redis
+from diamond_backend.app.utils.compute import (
+    describe_task_owner,
+    wait_for_compute_result,
+)
 from diamond_backend.app.utils.data_prep import globus_compute_wrapped_run
+from diamond_backend.app.utils.errors import ComputeTaskFailed, ComputeTaskTimeout
 from diamond_backend.app.utils.functions import (
     _escape_shell_braces,
     _make_shell_function,
@@ -55,30 +60,29 @@ class TaskSubmissionError(Exception):
         return {"error": self.error, **self.payload}
 
 
-def _wait_for_compute_result(globus_compute_client, task_id, *, max_attempts=12):
-    compute_result = None
-    for attempt in range(max_attempts):
-        try:
-            compute_result = globus_compute_client.get_result(task_id)
-        except TaskPending:
-            time.sleep(attempt)
-            continue
-        except Exception as exc:
-            logger.exception("Failed to fetch results for task_id: %s", task_id)
-            raise TaskSubmissionError(
-                "Failed to submit job - could not fetch results from endpoint",
-                payload={"task_id": task_id, "details": str(exc)},
-            ) from exc
-        else:
-            break
-
-    if compute_result is None:
+def _wait_for_compute_result(
+    globus_compute_client, task_id, *, endpoint_id, endpoint_name, username
+):
+    """Shared bounded wait, reported in this module's TaskSubmissionError shape."""
+    try:
+        return wait_for_compute_result(
+            globus_compute_client,
+            task_id,
+            endpoint_id,
+            logger,
+            endpoint_name=endpoint_name,
+            username=username,
+        )
+    except ComputeTaskTimeout as exc:
         raise TaskSubmissionError(
             "Failed to submit job - task timed out after maximum attempts",
             payload={"task_id": task_id},
-        )
-
-    return compute_result
+        ) from exc
+    except ComputeTaskFailed as exc:
+        raise TaskSubmissionError(
+            "Failed to submit job - could not fetch results from endpoint",
+            payload={"task_id": task_id, "details": str(exc.__cause__)},
+        ) from exc
 
 
 def _extract_slurm_batch_job_id(submit_result):
@@ -148,6 +152,7 @@ def run_endpoint_python_function(
         identity_id=identity_id, endpoint_uuid=endpoint_id
     )
     function_id = globus_compute_client.register_function(func)
+    endpoint_name, username = describe_task_owner(g_database, identity_id, endpoint_id)
 
     try:
         task_id = globus_compute_wrapped_run(
@@ -156,6 +161,8 @@ def run_endpoint_python_function(
             function_id=function_id,
             user_endpoint_config=user_endpoint_config,
             kwargs=kwargs,
+            endpoint_name=endpoint_name,
+            username=username,
         )
     except Exception as exc:
         logger.exception("Failed to submit %s task to Globus Compute", func.__name__)
@@ -165,7 +172,13 @@ def run_endpoint_python_function(
         ) from exc
 
     try:
-        return _wait_for_compute_result(globus_compute_client, task_id)
+        return _wait_for_compute_result(
+            globus_compute_client,
+            task_id,
+            endpoint_id=endpoint_id,
+            endpoint_name=endpoint_name,
+            username=username,
+        )
     except TaskSubmissionError as exc:
         raise TaskSubmissionError(
             error_message,
@@ -232,6 +245,7 @@ def submit_batch_script_task(
 
     submit_task_shell = _make_shell_function(_escape_shell_braces(submit_script))
     function_id = globus_compute_client.register_function(submit_task_shell)
+    endpoint_name, username = describe_task_owner(g_database, identity_id, endpoint_id)
 
     try:
         task_id = globus_compute_wrapped_run(
@@ -239,6 +253,8 @@ def submit_batch_script_task(
             endpoint_id=endpoint_id,
             function_id=function_id,
             user_endpoint_config=user_endpoint_config,
+            endpoint_name=endpoint_name,
+            username=username,
         )
     except Exception as exc:
         logger.exception("Failed to submit task to Globus Compute")
@@ -253,7 +269,13 @@ def submit_batch_script_task(
             payload=payload,
         ) from exc
 
-    submit_result = _wait_for_compute_result(globus_compute_client, task_id)
+    submit_result = _wait_for_compute_result(
+        globus_compute_client,
+        task_id,
+        endpoint_id=endpoint_id,
+        endpoint_name=endpoint_name,
+        username=username,
+    )
     if callable(checkpoint_path_extractor):
         extracted_checkpoint_path = checkpoint_path_extractor(
             getattr(submit_result, "stdout", "")
@@ -332,6 +354,7 @@ def _queue_task_status_refreshes(globus_compute_client, identity_id, tasks):
 
     task_status_func_id = globus_compute_client.register_function(fetch_task_status)
     task_records = []
+    task_owners: dict[str, tuple[str | None, str | None]] = {}
     for task in filtered_tasks:
         # Re-checked per task: a failure earlier in this loop trips the breaker,
         # so the rest of that endpoint's tasks skip their doomed submit.
@@ -341,6 +364,11 @@ def _queue_task_status_refreshes(globus_compute_client, identity_id, tasks):
         user_endpoint_config = g_database.get_endpoint_user_config(
             identity_id=identity_id, endpoint_uuid=task.compute_endpoint_id
         )
+        if task.compute_endpoint_id not in task_owners:
+            task_owners[task.compute_endpoint_id] = describe_task_owner(
+                g_database, identity_id, task.compute_endpoint_id
+            )
+        endpoint_name, username = task_owners[task.compute_endpoint_id]
         try:
             task_status_task_id = globus_compute_wrapped_run(
                 globus_compute_client,
@@ -348,6 +376,8 @@ def _queue_task_status_refreshes(globus_compute_client, identity_id, tasks):
                 function_id=task_status_func_id,
                 user_endpoint_config=user_endpoint_config,
                 kwargs={"batch_job_id": task.batch_job_id},
+                endpoint_name=endpoint_name,
+                username=username,
             )
         except Exception as exc:
             _trip_endpoint_breaker(task.compute_endpoint_id)
@@ -501,12 +531,15 @@ def read_remote_task_log(
     user_endpoint_config = g_database.get_endpoint_user_config(
         identity_id=identity_id, endpoint_uuid=endpoint_id
     )
+    endpoint_name, username = describe_task_owner(g_database, identity_id, endpoint_id)
     get_task_log_task_id = globus_compute_wrapped_run(
         globus_compute_client,
         endpoint_id=endpoint_id,
         function_id=get_task_log_func_id,
         user_endpoint_config=user_endpoint_config,
         kwargs={"log_file_path": log_path},
+        endpoint_name=endpoint_name,
+        username=username,
     )
 
     fallback_result = {
