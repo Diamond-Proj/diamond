@@ -80,7 +80,6 @@ def register_routes():
     from diamond_backend.app import datasets as datasets
     from diamond_backend.app import endpoints as endpoints
     from diamond_backend.app import images as images
-    from diamond_backend.app import llm as llm
     from diamond_backend.app import profiles as profiles
     from diamond_backend.app import tasks as tasks
     from diamond_backend.app import transfers as transfers
