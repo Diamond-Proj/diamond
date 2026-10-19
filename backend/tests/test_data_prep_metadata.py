@@ -49,3 +49,23 @@ def test_submit_metadata_task_returns_none_on_non_retryable(monkeypatch):
     )
 
     assert task_id is None
+
+
+def test_wrapped_run_logs_endpoint_name_and_user(caplog):
+    client = MagicMock()
+    client.batch_run.return_value = {"tasks": {"FUNC_ID": ["TASK_ID"]}}
+
+    with caplog.at_level(logging.INFO, logger=data_prep.logger.name):
+        task_id = data_prep.globus_compute_wrapped_run(
+            client,
+            endpoint_id="ENDPOINT_ID",
+            function_id="FUNC_ID",
+            endpoint_name="Delta EP",
+            username="user@example.edu",
+        )
+
+    assert task_id == "TASK_ID"
+    assert (
+        "Submitting task to endpoint ENDPOINT_ID (Delta EP), user user@example.edu, "
+        "with user_config: None" in caplog.messages
+    )

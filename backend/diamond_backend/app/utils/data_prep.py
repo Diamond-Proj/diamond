@@ -53,16 +53,22 @@ def globus_compute_wrapped_run(
     user_endpoint_config: Dict[str, str] | None = None,
     args: tuple | None = None,
     kwargs: dict | None = None,
+    *,
+    endpoint_name: str | None = None,
+    username: str | None = None,
 ):
     """Wrapper over Globus compute clients run function.
 
     This method uses the create_batch method that allows passing
-    user_endpoint_config for the MEP to interface with the batch system
+    user_endpoint_config for the MEP to interface with the batch system.
+    endpoint_name and username only label the log line; see describe_task_owner.
     """
     logger.info(
-        "Submitting task with user_config:{} to ep:{}".format(
-            user_endpoint_config, endpoint_id
-        )
+        "Submitting task to endpoint %s (%s), user %s, with user_config: %s",
+        endpoint_id,
+        endpoint_name,
+        username,
+        user_endpoint_config,
     )
     batch = globus_compute_client.create_batch(
         user_endpoint_config=user_endpoint_config
@@ -79,6 +85,8 @@ def _submit_metadata_task_with_retry(
     logger: logging.Logger,
     max_attempts: int = _METADATA_SUBMIT_MAX_ATTEMPTS,
     user_endpoint_config: Dict[str, str] | None = None,
+    endpoint_name: str | None = None,
+    username: str | None = None,
 ) -> str | None:
     """Submit the metadata task, retrying transient Compute errors."""
     delay = _METADATA_INITIAL_DELAY
@@ -89,6 +97,8 @@ def _submit_metadata_task_with_retry(
                 endpoint_id=endpoint_uuid,
                 function_id=metadata_func_id,
                 user_endpoint_config=user_endpoint_config,
+                endpoint_name=endpoint_name,
+                username=username,
             )
         except ComputeAPIError as exc:
             if not _is_retryable_compute_error(exc) or attempt == max_attempts:
@@ -202,6 +212,8 @@ def _get_endpoint_machine_metadata(
         metadata_func_id,
         logger,
         user_endpoint_config=user_endpoint_config,
+        endpoint_name=endpoint_name,
+        username=username,
     )
     if not metadata_task_id:
         return {}
