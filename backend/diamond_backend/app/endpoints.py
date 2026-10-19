@@ -1,11 +1,14 @@
 import logging
 import os
-import time
 
 from flask import jsonify, request
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import RequestMalformed
+from diamond_backend.app.utils.compute import (
+    describe_task_owner,
+    wait_for_compute_result,
+)
 from diamond_backend.app.utils.config_loader import load_partitions
 from diamond_backend.app.utils.data_prep import (
     endpoint_initialization_status,
@@ -84,17 +87,16 @@ def diamond_set_diamond_work_path():
         user_endpoint_config=user_endpoint_config,
         kwargs={"diamond_work_path": diamond_work_path},
     )
-    check_diamond_work_path_task_status = globus_compute_client.get_task(
-        check_diamond_work_path_task_id
+    endpoint_name, username = describe_task_owner(
+        g_database, identity_id, endpoint_uuid
     )
-    while check_diamond_work_path_task_status["pending"]:
-        time.sleep(2)
-        check_diamond_work_path_task_status = globus_compute_client.get_task(
-            check_diamond_work_path_task_id
-        )
-        continue
-    check_diamond_work_path_task_result = globus_compute_client.get_result(
-        check_diamond_work_path_task_id
+    check_diamond_work_path_task_result = wait_for_compute_result(
+        globus_compute_client,
+        check_diamond_work_path_task_id,
+        endpoint_uuid,
+        logger,
+        endpoint_name=endpoint_name,
+        username=username,
     )
     if check_diamond_work_path_task_result == 0:
         return jsonify(
