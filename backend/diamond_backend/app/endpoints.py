@@ -1,5 +1,4 @@
 import logging
-import os
 import time
 
 from flask import jsonify, request
@@ -20,6 +19,10 @@ from diamond_backend.app.utils.functions import (
     create_diamond_dir,
 )
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
+from diamond_backend.app.utils.work_path import (
+    normalize_work_path,
+    resolve_diamond_dirs,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -57,18 +60,17 @@ def diamond_load_accounts_partitions():
 @authenticated
 def diamond_set_diamond_work_path():
     identity_id = request.cookies.get("primary_identity")
-    endpoint_uuid = request.json.get("endpoint_uuid")
-    diamond_work_path = request.json.get("diamond_work_path")
-
-    # Handle diamond path logic: if path ends with "diamond", don't add it again
-    if diamond_work_path.endswith("diamond"):
-        diamond_dir = diamond_work_path
-        diamond_log_dir = os.path.join(diamond_work_path, "logs")
-        diamond_image_dir = os.path.join(diamond_work_path, "images")
-    else:
-        diamond_dir = os.path.join(diamond_work_path, "diamond")
-        diamond_log_dir = os.path.join(diamond_dir, "logs")
-        diamond_image_dir = os.path.join(diamond_dir, "images")
+    payload = request.get_json(silent=True)
+    if not isinstance(payload, dict):
+        raise RequestMalformed("JSON object body")
+    endpoint_uuid = payload.get("endpoint_uuid")
+    if not isinstance(endpoint_uuid, str) or not endpoint_uuid.strip():
+        raise RequestMalformed("endpoint_uuid")
+    endpoint_uuid = endpoint_uuid.strip()
+    diamond_work_path = normalize_work_path(payload.get("diamond_work_path"))
+    diamond_dir, diamond_log_dir, diamond_image_dir = resolve_diamond_dirs(
+        diamond_work_path
+    )
 
     globus_compute_client = initialize_globus_compute_client()
     check_diamond_work_path_func_id = globus_compute_client.register_function(
