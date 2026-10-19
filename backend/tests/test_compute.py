@@ -67,9 +67,14 @@ def test_wait_for_compute_result_returns_after_pending(clock, caplog):
     )
 
 
-def test_wait_for_compute_result_times_out_at_deadline(clock):
+def test_wait_for_compute_result_times_out_at_deadline(clock, caplog):
     client = MagicMock()
-    client.get_result.side_effect = TaskPending("pending")
+    client.get_result.side_effect = TaskPending("waiting-for-nodes")
+    client.get_task.return_value = {
+        "pending": True,
+        "status": "waiting-for-nodes",
+        "details": {"task_transitions": {"waiting-for-nodes": 1.0}},
+    }
 
     with pytest.raises(ComputeTaskTimeout) as excinfo:
         compute.wait_for_compute_result(
@@ -80,6 +85,28 @@ def test_wait_for_compute_result_times_out_at_deadline(clock):
     assert excinfo.value.error_args == ["TASK_ID", "ENDPOINT_ID"]
     # Never sleeps past the deadline.
     assert sum(clock.sleeps) == pytest.approx(10)
+    (message,) = [m for m in caplog.messages if "giving up" in m]
+    assert "(status waiting-for-nodes)" in message
+    assert "'task_transitions': {'waiting-for-nodes': 1.0}" in message
+
+
+def test_wait_for_compute_result_timeout_survives_details_failure(clock, caplog):
+    client = MagicMock()
+    client.get_result.side_effect = TaskPending("waiting-for-ep")
+    client.get_task.side_effect = ConnectionError("reset")
+
+    with pytest.raises(ComputeTaskTimeout):
+        _wait_with_10s_deadline(client)
+
+    (message,) = [m for m in caplog.messages if "giving up" in m]
+    assert "(status waiting-for-ep)" in message
+    assert "details=None" in message
+
+
+def _wait_with_10s_deadline(client):
+    return compute.wait_for_compute_result(
+        client, "TASK_ID", "ENDPOINT_ID", logging.getLogger("test"), timeout_s=10
+    )
 
 
 @pytest.mark.parametrize(

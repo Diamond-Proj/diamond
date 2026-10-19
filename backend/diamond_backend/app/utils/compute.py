@@ -35,6 +35,17 @@ def describe_task_owner(
     )
 
 
+def _task_details(
+    globus_compute_client: GlobusComputeClient, task_id: str, logger: logging.Logger
+) -> Any:
+    """Best-effort fetch of the service's per-task details for a timeout log."""
+    try:
+        return globus_compute_client.get_task(task_id).get("details")
+    except Exception as exc:
+        logger.debug("Could not fetch details for Compute task %s: %r", task_id, exc)
+        return None
+
+
 def wait_for_compute_result(
     globus_compute_client: GlobusComputeClient,
     task_id: str,
@@ -56,14 +67,18 @@ def wait_for_compute_result(
     while True:
         try:
             result = globus_compute_client.get_result(task_id)
-        except TaskPending:
+        except TaskPending as pending:
             remaining = deadline - time.monotonic()
             if remaining <= 0:
+                # reason is the service's task status, e.g. "waiting-for-nodes".
                 logger.warning(
-                    "Compute task %s on %s still pending after %.1fs; giving up.",
+                    "Compute task %s on %s still pending (status %s) after %.1fs; "
+                    "giving up. details=%r",
                     task_id,
                     owner,
+                    pending.reason,
                     time.monotonic() - start,
+                    _task_details(globus_compute_client, task_id, logger),
                 )
                 raise ComputeTaskTimeout(task_id, endpoint_id, timeout_s)
             time.sleep(min(delay, remaining))
