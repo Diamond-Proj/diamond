@@ -48,10 +48,6 @@ function cloneEntries(entries: ConfigEntry[]): ConfigEntry[] {
   return entries.map((entry) => ({ ...entry }));
 }
 
-function toEditableWorkPath(path?: string) {
-  return (path || '').replace(/\/diamond\/?$/, '');
-}
-
 function normalizeConfig(value: unknown): ConfigEntry[] {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     return [];
@@ -150,8 +146,8 @@ export function EndpointSettingsPanel({
   const pathInputId = `diamond-work-path-${endpoint.endpoint_uuid}`;
   const settingsPanelId = `endpoint-settings-panel-${endpoint.endpoint_uuid}`;
   const [isExpanded, setIsExpanded] = useState(false);
-  const [savedPath, setSavedPath] = useState(toEditableWorkPath(endpoint.diamond_dir));
-  const [path, setPath] = useState(toEditableWorkPath(endpoint.diamond_dir));
+  const [savedPath, setSavedPath] = useState(endpoint.diamond_dir || '');
+  const [path, setPath] = useState(endpoint.diamond_dir || '');
   const [isSavingPath, setIsSavingPath] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
@@ -163,8 +159,8 @@ export function EndpointSettingsPanel({
   const { toast } = useToast();
 
   useEffect(() => {
-    setSavedPath(toEditableWorkPath(endpoint.diamond_dir));
-    setPath(toEditableWorkPath(endpoint.diamond_dir));
+    setSavedPath(endpoint.diamond_dir || '');
+    setPath(endpoint.diamond_dir || '');
   }, [endpoint.diamond_dir]);
 
   useEffect(() => {
@@ -246,7 +242,7 @@ export function EndpointSettingsPanel({
     };
   }, [endpoint.endpoint_uuid, hasLoadedConfig, isExpanded, reloadKey]);
 
-  const normalizedPath = path.trim().replace(/\/diamond\/?$/, '');
+  const normalizedPath = path.trim();
   const pathHasChanges = normalizedPath !== savedPath;
   const configHasChanges = getSignature(entries) !== getSignature(savedEntries);
   const isBusy = isSavingPath || isSavingConfig;
@@ -481,9 +477,9 @@ export function EndpointSettingsPanel({
           >
             <form
               onSubmit={handleSavePath}
-              className="grid gap-2 px-3 py-3 lg:grid-cols-[172px_minmax(0,1fr)_auto]"
+              className="grid gap-2 px-3 py-3 lg:grid-cols-[auto_minmax(0,1fr)_auto]"
             >
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 lg:pr-4">
                 <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-slate-100/90 text-slate-600 dark:bg-slate-900/90 dark:text-slate-300">
                   <Folder className="h-4 w-4" />
                 </div>
@@ -494,8 +490,8 @@ export function EndpointSettingsPanel({
                   >
                     Diamond Work Path
                   </label>
-                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Base directory
+                  <p className="text-[11px] whitespace-nowrap text-slate-500 dark:text-slate-400">
+                    Parent or diamond directory
                   </p>
                 </div>
               </div>
