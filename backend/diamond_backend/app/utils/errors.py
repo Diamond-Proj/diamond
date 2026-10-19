@@ -1,3 +1,8 @@
+from http import HTTPStatus
+
+from diamond_backend.app.errors import DiamondResponseError
+
+
 class BadRequestError(Exception):
     status_code = 400
     message = "Bad Request"
@@ -91,3 +96,14 @@ class TaskNotFoundError(Exception):
         ret["message"] = self.message
 
         return ret
+
+
+class InvalidWorkPath(DiamondResponseError):
+    """User-supplied Diamond work path is not usable"""
+
+    code = "INVALID_WORK_PATH"
+    http_status_code = HTTPStatus.BAD_REQUEST
+
+    def __init__(self, reason: str, work_path: str) -> None:
+        self.error_args = [work_path]
+        self.reason = reason

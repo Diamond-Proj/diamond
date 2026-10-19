@@ -450,7 +450,9 @@ test.describe('Authenticated UI regression', () => {
     ).toBeVisible();
     await expect(page.getByText('UI Test GPU Queue')).toBeVisible();
     await expect(page.getByText('gpu01.test')).toBeVisible();
-    await expect(page.getByLabel('Diamond Work Path')).toHaveValue('/scratch');
+    await expect(page.getByLabel('Diamond Work Path')).toHaveValue(
+      '/scratch/diamond'
+    );
 
     await page.getByRole('tab', { name: 'Available Endpoints' }).click();
     await expect(page.getByText('Available CPU Queue')).toBeVisible();
