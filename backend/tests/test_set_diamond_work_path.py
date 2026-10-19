@@ -1,3 +1,5 @@
+import os
+import posixpath
 from unittest.mock import patch
 
 import pytest
@@ -28,7 +30,7 @@ def client(test_identity):
         ("/work/nvme/proj/username/", "/work/nvme/proj/username"),
         ("/scratch/username", "/scratch/username"),
         ("  /scratch/username  ", "/scratch/username"),
-        ("/u/username//a/./b/../c", "/u/username/a/c"),
+        ("/u/username//a/./b/", "/u/username/a/b"),
         ("//u/username", "/u/username"),
     ],
 )
@@ -43,9 +45,45 @@ def test_normalize_work_path_rejects_missing(raw):
 
 
 @pytest.mark.parametrize(
-    "raw", ["~", "~/diamond", "~username/x", "u/username", "./x", "/", "/..", "//"]
+    "raw",
+    [
+        "~",
+        "~/diamond",
+        "~username/x",
+        "u/username",
+        "./x",
+        "/",
+        "//",
+        "/..",
+        "/u/username/..",
+        "/u/username/a/../b",
+    ],
 )
 def test_normalize_work_path_rejects_invalid(raw):
+    with pytest.raises(InvalidWorkPath):
+        normalize_work_path(raw)
+
+
+def test_normalize_work_path_rejects_dotdot_after_symlink(tmp_path):
+    """`link/..` is the symlink target's parent, not the lexical parent.
+
+    A lexical normpath would silently select a different, possibly existing and
+    writable, directory than the one the endpoint would resolve.
+    """
+    (tmp_path / "scratch" / "project" / "run").mkdir(parents=True)
+    (tmp_path / "scratch" / "project" / "work").mkdir()
+    (tmp_path / "home" / "user" / "work").mkdir(parents=True)
+    (tmp_path / "home" / "user" / "link").symlink_to(
+        tmp_path / "scratch" / "project" / "run"
+    )
+    raw = f"{tmp_path}/home/user/link/../work"
+
+    # Premise: the filesystem and a lexical normalization disagree.
+    assert os.path.realpath(raw) == os.path.realpath(
+        tmp_path / "scratch" / "project" / "work"
+    )
+    assert posixpath.normpath(raw) == f"{tmp_path}/home/user/work"
+
     with pytest.raises(InvalidWorkPath):
         normalize_work_path(raw)
 
@@ -86,6 +124,10 @@ def test_resolve_diamond_dirs(work_path, diamond_dir):
         ),
         (
             {"json": {"endpoint_uuid": "EP", "diamond_work_path": "u/username"}},
+            "INVALID_WORK_PATH",
+        ),
+        (
+            {"json": {"endpoint_uuid": "EP", "diamond_work_path": "/u/link/../x"}},
             "INVALID_WORK_PATH",
         ),
     ],

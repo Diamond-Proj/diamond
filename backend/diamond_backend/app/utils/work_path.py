@@ -29,7 +29,13 @@ def normalize_work_path(raw_path: object) -> str:
             f"Work path must be an absolute path starting with '/': {path}",
             raw_path,
         )
-    # normpath keeps a leading "//" (implementation-defined in POSIX); collapse it.
+    # Reject "..": through a symlink it is the target's parent, not the lexical one.
+    if ".." in path.split("/"):
+        raise InvalidWorkPath(
+            f"Work path must not contain '..' components: {path}",
+            raw_path,
+        )
+    # Safe without "..". normpath keeps a leading "//", so strip it too.
     normalized = "/" + posixpath.normpath(path).lstrip("/")
     if normalized == "/":
         raise InvalidWorkPath("Work path cannot be the filesystem root.", raw_path)
