@@ -1,3 +1,8 @@
+from http import HTTPStatus
+
+from diamond_backend.app.errors import DiamondResponseError
+
+
 class BadRequestError(Exception):
     status_code = 400
     message = "Bad Request"
@@ -91,3 +96,31 @@ class TaskNotFoundError(Exception):
         ret["message"] = self.message
 
         return ret
+
+
+class ComputeTaskTimeout(DiamondResponseError):
+    """Globus Compute task did not finish within the request's deadline"""
+
+    code = "COMPUTE_TASK_TIMEOUT"
+    http_status_code = HTTPStatus.GATEWAY_TIMEOUT
+
+    def __init__(self, task_id: str, endpoint_id: str, timeout_s: float) -> None:
+        self.error_args = [task_id, endpoint_id]
+        self.reason = (
+            f"Endpoint did not return a result within {timeout_s:.0f} seconds. "
+            "It may be starting up; try again shortly."
+        )
+
+
+class ComputeTaskFailed(DiamondResponseError):
+    """Globus Compute task failed remotely or its result could not be fetched"""
+
+    code = "COMPUTE_TASK_FAILED"
+    http_status_code = HTTPStatus.BAD_GATEWAY
+
+    def __init__(self, task_id: str, endpoint_id: str, exc: Exception) -> None:
+        self.error_args = [task_id, endpoint_id, type(exc).__name__]
+        self.reason = (
+            "Endpoint task failed or its result could not be retrieved "
+            f"({type(exc).__name__})."
+        )
