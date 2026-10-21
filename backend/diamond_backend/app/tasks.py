@@ -10,7 +10,7 @@ from datetime import datetime
 from flask import Response, jsonify, request
 from globus_compute_sdk.errors import TaskPending
 
-from diamond_backend.app import app, g_database, g_runtime_redis
+from diamond_backend.app import app, g_database
 from diamond_backend.app.database.models.function import Functions
 from diamond_backend.app.errors import DiamondResponseError
 from diamond_backend.app.flows import get_flow_result, submit_flow
@@ -18,6 +18,8 @@ from diamond_backend.app.task_runtime import (
     TaskSubmissionError,
     list_endpoint_directory,
     read_endpoint_file_b64,
+    read_remote_task_log,
+    refresh_identity_task_statuses,
     stage_base64_file_on_endpoint,
 )
 from diamond_backend.app.utils.config_loader import (
@@ -25,10 +27,6 @@ from diamond_backend.app.utils.config_loader import (
 )
 from diamond_backend.app.utils.data_prep import globus_compute_wrapped_run
 from diamond_backend.app.utils.decorators import authenticated
-from diamond_backend.app.utils.functions import (
-    fetch_task_status,
-    get_task_log,
-)
 from diamond_backend.app.utils.login_flow import initialize_globus_compute_client
 from diamond_backend.app.utils.scripts_render import (
     render_submit_task_script,
@@ -36,22 +34,6 @@ from diamond_backend.app.utils.scripts_render import (
 )
 
 logger = logging.getLogger(__name__)
-GET_TASK_STATUS_DTASK_TYPE = "fetch_task_status"
-GET_TASK_STATUS_REDIS_TTL_SECONDS = 30
-
-SLURM_STATE_MAPPING = {
-    "COMPLETING": "COMPLETED",
-    "COMPLETED+": "COMPLETED",
-    "COMPLETED": "COMPLETED",
-    "CANCELED": "COMPLETED",
-    "FAILED": "FAILED",
-    "TIMEOUT": "FAILED",
-    "OUT_OF_MEMORY": "FAILED",
-    "RUNNING": "RUNNING",
-    "PENDING": "PENDING",
-}
-
-TERMINAL_STATES = ["COMPLETED", "COMPLETING", "FAILED", "MISSING"]
 FINETUNED_MODEL_NAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]+$")
 UPLOAD_FIELD_SUFFIX = "_upload"
 # A single path component with no separators or traversal — the one gate for
@@ -817,7 +799,7 @@ def diamond_endpoint_submit_job():
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             log_path=task_log_info,
-            compute_endpoint_id = endpoint_id,
+            compute_endpoint_id=endpoint_id,
             checkpoint_path=artifact_path,
         )
         return jsonify({"flow_run_id": flow_run_id})
@@ -833,215 +815,67 @@ def diamond_endpoint_submit_job():
         return jsonify(payload), http_status
 
 
+def _resolve_submitted_flow_tasks(identity_id):
+    """Move SUBMITTING tasks on once their submit flow finishes.
+
+    A succeeded flow hands the task its SLURM job ID and leaves it PENDING, so
+    refresh_identity_task_statuses polls it like any other batch job.
+    """
+    for task in g_database.load_tasks(identity_id=identity_id, status="SUBMITTING"):
+        task_result = get_flow_result(request.cookies, task.task_id)
+        flow_status = task_result.get("status", None)
+        if flow_status == "SUCCEEDED":
+            submit_stdout = str(
+                task_result["details"]["output"]["run_function"]["details"]["result"][0]
+            )
+            job_id_match = SBATCH_JOB_ID_PATTERN.search(submit_stdout)
+            if not job_id_match:
+                logger.error(
+                    "Flow run for Task:%s succeeded but no SLURM job ID could be "
+                    "parsed from its output: %r",
+                    task.task_id,
+                    submit_stdout,
+                )
+                g_database.update_task_status(task.task_id, "FAILED")
+                continue
+
+            slurm_job_id = job_id_match.group(1)
+            logger.info(
+                "Updating submitted Task %s with SLURM job ID %s",
+                task.task_id,
+                slurm_job_id,
+            )
+            artifact_path = _extract_artifact_path_from_submit_stdout(submit_stdout)
+            if artifact_path:
+                g_database.update_task_checkpoint_path(task.task_id, artifact_path)
+            g_database.update_task_status(task.task_id, "PENDING")
+            g_database.update_task_id(task.task_id, slurm_job_id)
+        elif flow_status in ("FAILED", "INACTIVE"):
+            # INACTIVE covers flows stuck needing manual action (e.g. a
+            # consent requirement) — from the user's perspective the
+            # submission is stuck either way, so surface both as failures
+            # instead of leaving the task shown as SUBMITTING forever.
+            logger.error(
+                "Flow run for Task:%s ended with non-success status %s. Details: %s",
+                task.task_id,
+                flow_status,
+                task_result.get("details"),
+            )
+            g_database.update_task_status(task.task_id, "FAILED")
+        elif flow_status is None:
+            logger.warning(
+                "Unable to determine flow run status for Task:%s. Result: %s",
+                task.task_id,
+                task_result,
+            )
+
+
 @app.route("/api/get_task_status", methods=["GET"])
 @authenticated
 def diamond_get_task_status():
     identity_id = request.cookies.get("primary_identity")
-    globus_compute_client = initialize_globus_compute_client()
-    redis_key = f"dtask:{identity_id}:{GET_TASK_STATUS_DTASK_TYPE}"
-    runtime_record = g_runtime_redis.get(redis_key)
-
-    task_status_func_id = globus_compute_client.register_function(fetch_task_status)
-
-    if runtime_record is None:
-        tasks = g_database.load_tasks(identity_id=identity_id)
-        task_records = []
-
-        filtered_tasks = [
-            task for task in tasks if task.task_status not in TERMINAL_STATES
-        ]
-        for task in filtered_tasks:
-            user_endpoint_config = g_database.get_endpoint_user_config(
-                identity_id=identity_id, endpoint_uuid=task.compute_endpoint_id
-            )
-            try:
-                task_status_task_id = globus_compute_wrapped_run(
-                    globus_compute_client,
-                    endpoint_id=task.compute_endpoint_id,
-                    function_id=task_status_func_id,
-                    user_endpoint_config=user_endpoint_config,
-                    kwargs={"batch_job_id": task.batch_job_id},
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to submit fetch_task_status for task %s. Error: %s",
-                    task.task_id,
-                    e,
-                )
-                continue
-
-            task_records.append(
-                {
-                    "identity_id": identity_id,
-                    "dtask_type": GET_TASK_STATUS_DTASK_TYPE,
-                    "task_id": task.task_id,
-                    "task_status_task_id": task_status_task_id,
-                }
-            )
-
-        if task_records:
-            g_runtime_redis.set(
-                redis_key,
-                task_records,
-                ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
-            )
-    else:
-        pending_task_records = []
-        for task_record in runtime_record:
-            task_status_task_id = task_record["task_status_task_id"]
-            try:
-                task_status_task = globus_compute_client.get_task(task_status_task_id)
-            except Exception as e:
-                logger.warning(
-                    "Failed to load task status task %s. Error: %s",
-                    task_status_task_id,
-                    e,
-                )
-                continue
-
-            if task_status_task.get("pending", False):
-                pending_task_records.append(task_record)
-                continue
-
-            try:
-                task_status_result = globus_compute_client.get_result(
-                    task_status_task_id
-                )
-            except Exception as e:
-                logger.warning(
-                    "Failed to fetch result for task status task %s. Error: %s",
-                    task_status_task_id,
-                    e,
-                )
-                continue
-
-            task_status = getattr(task_status_result, "stdout", "").strip()
-            new_task_status = None
-            if task_status:
-                try:
-                    new_task_status = SLURM_STATE_MAPPING[task_status]
-                except KeyError as e:
-                    new_task_status = "MISSING"
-                    logger.exception(
-                        "Failed to fetch task status for task status task %s. Error: %s",
-                        task_status,
-                        e,
-                    )
-                logger.debug(
-                    f"Task:{task_record['task_id']} status {task_status} mapped to {new_task_status}"
-                )
-            else:
-                try:
-                    previous_task_status = g_database.get_task_status(
-                        task_record["task_id"]
-                    )
-                except AttributeError:
-                    logger.warning(f"Task:{task_record['task_id']} removed")
-                    continue
-                if previous_task_status in ["RUNNING", "COMPLETING"]:
-                    new_task_status = "COMPLETED"
-            if new_task_status:
-                try:
-                    g_database.update_task_status(
-                        task_record["task_id"], new_task_status
-                    )
-                    logger.info(
-                        f"Updating Task:{task_record['task_id']} to {new_task_status}"
-                    )
-                except Exception:
-                    logger.exception(f"Failed to update task:{task_record['task_id']}")
-
-        if pending_task_records:
-            g_runtime_redis.set(
-                redis_key,
-                pending_task_records,
-                ttl_seconds=GET_TASK_STATUS_REDIS_TTL_SECONDS,
-            )
-        else:
-            g_runtime_redis.delete(redis_key)
-
-        # Try to update any ACTIVE flow tasks with actual slurm job status
-        active_tasks = g_database.load_tasks(identity_id=identity_id, status="ACTIVE")
-        for task in active_tasks:
-            user_endpoint_config = g_database.get_endpoint_user_config(
-                identity_id=identity_id, endpoint_uuid=task.compute_endpoint_id
-            )
-            try:
-                print(f"Submitting fetch_task_status for Task:{task.task_id}")
-                task_status_task_id = globus_compute_wrapped_run(
-                    globus_compute_client,
-                    endpoint_id=task.compute_endpoint_id,
-                    function_id=task_status_func_id,
-                    user_endpoint_config=user_endpoint_config,
-                    kwargs={"batch_job_id": task.task_id},
-                )
-                globus_compute_client.get_task(task_status_task_id)
-            except Exception as e:
-                logger.warning(
-                    "Failed to submit fetch_task_status for task %s. Error: %s",
-                    task.task_id,
-                    e,
-                )
-                continue
-
-        # Try to update any SUBMITTED flow tasks with actual job ID
-        submitted_tasks = g_database.load_tasks(
-            identity_id=identity_id, status="SUBMITTING"
-        )
-        for task in submitted_tasks:
-            task_result = get_flow_result(request.cookies, task.task_id)
-            flow_status = task_result.get("status", None)
-            if flow_status == "SUCCEEDED":
-                submit_stdout = task_result["details"]["output"]["run_function"][
-                    "details"
-                ]["result"][0]
-                job_id_match = SBATCH_JOB_ID_PATTERN.search(submit_stdout)
-                if not job_id_match:
-                    logger.error(
-                        "Flow run for Task:%s succeeded but no SLURM job ID could be "
-                        "parsed from its output: %s",
-                        task.task_id,
-                        submit_stdout,
-                    )
-                    g_database.update_task_status(task.task_id, "FAILED")
-                    continue
-
-                slurm_job_id = job_id_match.group(1)
-                logger.info(
-                    "Updating submitted Task {} with SLURM job ID {}".format(
-                        task.task_id, slurm_job_id
-                    )
-                )
-                artifact_path = _extract_artifact_path_from_submit_stdout(
-                    submit_stdout
-                )
-                if artifact_path:
-                    g_database.update_task_checkpoint_path(
-                        task.task_id, artifact_path
-                    )
-                g_database.update_task_status(task.task_id, "ACTIVE")
-                g_database.update_task_id(task.task_id, slurm_job_id)
-            elif flow_status in ("FAILED", "INACTIVE"):
-                # INACTIVE covers flows stuck needing manual action (e.g. a
-                # consent requirement) — from the user's perspective the
-                # submission is stuck either way, so surface both as failures
-                # instead of leaving the task shown as SUBMITTING forever.
-                logger.error(
-                    "Flow run for Task:%s ended with non-success status %s. Details: %s",
-                    task.task_id,
-                    flow_status,
-                    task_result.get("details"),
-                )
-                g_database.update_task_status(task.task_id, "FAILED")
-            elif flow_status is None:
-                logger.warning(
-                    "Unable to determine flow run status for Task:%s. Result: %s",
-                    task.task_id,
-                    task_result,
-                )
-
-    # Reload the updated tasks from the database
-    updated_tasks = g_database.load_tasks(identity_id=identity_id)
+    _resolve_submitted_flow_tasks(identity_id)
+    updated_tasks = refresh_identity_task_statuses(identity_id)
 
     # Format tasks data for JSON response
     tasks_data = {}
@@ -1361,32 +1195,11 @@ def diamond_get_task_log():
     endpoint_id = request.args.get("endpoint_id")
     log_path = request.args.get("log_path")
 
-    globus_compute_client = initialize_globus_compute_client()
-    get_task_log_func_id = globus_compute_client.register_function(get_task_log)
-    user_endpoint_config = g_database.get_endpoint_user_config(
-        identity_id=identity_id, endpoint_uuid=endpoint_id
+    log_result = read_remote_task_log(
+        identity_id=identity_id, endpoint_id=endpoint_id, log_path=log_path
     )
-    get_task_log_task_id = globus_compute_wrapped_run(
-        globus_compute_client,
-        endpoint_id=endpoint_id,
-        function_id=get_task_log_func_id,
-        user_endpoint_config=user_endpoint_config,
-        kwargs={"log_file_path": log_path},
-    )
-    max_attempts = 5
-    log_content = "Failed to load log content within time limit"
-    for _ in range(max_attempts):
-        try:
-            log_content = globus_compute_client.get_result(get_task_log_task_id)[
-                "content"
-            ]
-            logger.info(f"Log content: {log_content}")
-            break
-        except TaskPending:
-            # TODO: remove sleep
-            time.sleep(2)
-            continue
-    return jsonify({"log_content": log_content})
+    logger.info("Loaded task log for endpoint %s path %s", endpoint_id, log_path)
+    return jsonify({"log_content": log_result.get("content", "")})
 
 
 @app.route("/api/delete_task", methods=["POST"])

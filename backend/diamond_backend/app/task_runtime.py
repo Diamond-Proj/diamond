@@ -319,7 +319,9 @@ def refreshable_tasks(tasks):
     return [
         task
         for task in tasks
-        if not is_terminal(task.task_status)
+        # No batch job ID yet (e.g. still SUBMITTING via a flow): nothing to ask sacct.
+        if task.batch_job_id
+        and not is_terminal(task.task_status)
         and not is_stale(task)
         and _endpoint_is_pollable(task.compute_endpoint_id)
     ]

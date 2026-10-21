@@ -210,11 +210,16 @@ def submit_slurm_job(**params):
     location = os.path.expanduser(os.path.expandvars(params["location"]))
     submit_file = Path(location) / f"{params['task_name']}.sh"
     submit_file.write_text(script)
+    # stderr is folded in so a failed sbatch reports why instead of returning
+    # an empty string that the flow still counts as a success.
     result = subprocess.run(
         ["bash", submit_file],
-        capture_output=True,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
         text=True,
     )
+    if result.returncode != 0:
+        return f"{result.stdout}\n[exit code {result.returncode}]"
     return result.stdout
 
 

@@ -11,10 +11,9 @@ from uuid import uuid4
 import pytest
 from flask import jsonify
 
-from diamond_backend.app import g_database, g_runtime_redis
+from diamond_backend.app import g_database
 from diamond_backend.app.database.db import db
 from diamond_backend.app.database.models.function import Functions
-from diamond_backend.app.tasks import GET_TASK_STATUS_DTASK_TYPE
 
 SUBMIT_SLURM_JOB_FUNCTION_ID = "FAKE-SUBMIT-SLURM-JOB-FUNCTION-ID"
 
@@ -155,20 +154,12 @@ def test_submit_task_missing_registered_function_returns_error(
     assert "error" in response.get_json()
 
 
-def _prime_task_status_redis_cache(test_identity):
-    # The SUBMITTING/ACTIVE task refresh only runs on a warm dtask cache
-    # (see diamond_get_task_status), so seed an empty pending-record list to
-    # reach it deterministically.
-    redis_key = f"dtask:{test_identity}:{GET_TASK_STATUS_DTASK_TYPE}"
-    g_runtime_redis.set(redis_key, [], ttl_seconds=30)
-
-
 @pytest.fixture(autouse=True)
 def _mock_compute_client(monkeypatch):
     from unittest.mock import MagicMock
 
     monkeypatch.setattr(
-        "diamond_backend.app.tasks.initialize_globus_compute_client",
+        "diamond_backend.app.task_runtime.initialize_globus_compute_client",
         lambda: MagicMock(),
     )
 
@@ -190,7 +181,6 @@ def test_get_task_status_marks_failed_flow_as_failed(
         compute_endpoint_id=test_endpoint_anvil[2],
         checkpoint_path="",
     )
-    _prime_task_status_redis_cache(test_identity)
 
     monkeypatch.setattr(
         "diamond_backend.app.tasks.get_flow_result",
@@ -226,7 +216,6 @@ def test_get_task_status_marks_inactive_flow_as_failed(
         compute_endpoint_id=test_endpoint_anvil[2],
         checkpoint_path="",
     )
-    _prime_task_status_redis_cache(test_identity)
 
     monkeypatch.setattr(
         "diamond_backend.app.tasks.get_flow_result",
@@ -245,7 +234,7 @@ def test_get_task_status_marks_inactive_flow_as_failed(
         g_database.delete_task(task_id)
 
 
-def test_get_task_status_marks_succeeded_flow_active_with_job_id(
+def test_get_task_status_marks_succeeded_flow_pending_with_job_id(
     client, test_identity, test_endpoint_anvil, monkeypatch
 ):
     task_id = f"FLOW-RUN-{uuid4().hex[:8]}"
@@ -262,7 +251,6 @@ def test_get_task_status_marks_succeeded_flow_active_with_job_id(
         compute_endpoint_id=test_endpoint_anvil[2],
         checkpoint_path="",
     )
-    _prime_task_status_redis_cache(test_identity)
 
     artifact_path = "/work/nvme/bcrc/hxie6/demo-sft"
     monkeypatch.setattr(
@@ -290,7 +278,7 @@ def test_get_task_status_marks_succeeded_flow_active_with_job_id(
         assert response.status_code == 200
         task = g_database.get_task(task_id=new_task_id)
         assert task is not None
-        assert task.task_status == "ACTIVE"
+        assert task.task_status == "PENDING"
         assert task.batch_job_id == new_task_id
         # The real (script-produced) artifact path replaces the pre-submission guess.
         assert task.checkpoint_path == artifact_path
@@ -317,7 +305,6 @@ def test_get_task_status_succeeded_flow_without_job_id_marks_failed(
         compute_endpoint_id=test_endpoint_anvil[2],
         checkpoint_path="",
     )
-    _prime_task_status_redis_cache(test_identity)
 
     monkeypatch.setattr(
         "diamond_backend.app.tasks.get_flow_result",
