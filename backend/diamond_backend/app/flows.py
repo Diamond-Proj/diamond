@@ -109,7 +109,9 @@ def get_specific_flow_client(request_cookies, flow_id) -> globus_sdk.SpecificFlo
     return globus_sdk.SpecificFlowClient(flow_id, authorizer=authorizer)
 
 
-def submit_flow(request_json, request_cookies, function_id, fn_params):
+def submit_flow(
+    request_json, request_cookies, function_id, fn_params, user_endpoint_config=None
+):
     endpoint_id = request_json.get("endpoint")
     task_name = request_json.get("taskName")
 
@@ -129,10 +131,7 @@ def submit_flow(request_json, request_cookies, function_id, fn_params):
                     "endpoint_id": endpoint_id,
                     "function_id": function_id,
                     "function_kwargs": fn_params,
-                    "user_endpoint_config": {
-                        "account": fn_params.get("account"),
-                        "partition": fn_params.get("partition"),
-                    },
+                    "user_endpoint_config": user_endpoint_config or {},
                     "user_runtime": {
                         "globus_compute_sdk_version": fn_params.get(
                             "globus_compute_sdk_version", GLOBUS_COMPUTE_SDK_VERSION

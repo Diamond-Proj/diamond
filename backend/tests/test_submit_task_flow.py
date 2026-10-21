@@ -58,7 +58,7 @@ def test_submit_task_success_saves_submitting_task(
     _set_submit_slurm_job_function(SUBMIT_SLURM_JOB_FUNCTION_ID)
     flow_run_id = f"FLOW-RUN-{uuid4().hex[:8]}"
 
-    def fake_submit_flow(request_json, request_cookies, function_id, fn_params):
+    def fake_submit_flow(request_json, request_cookies, function_id, fn_params, **_):
         assert function_id == SUBMIT_SLURM_JOB_FUNCTION_ID
         assert "submit_task_script" in fn_params
         return jsonify({"flow_run_id": flow_run_id, "flow_id": "FLOW-1"}), 200
@@ -91,7 +91,7 @@ def test_submit_task_forwards_non_200_error_tuple(
     # on a tuple.
     _set_submit_slurm_job_function(SUBMIT_SLURM_JOB_FUNCTION_ID)
 
-    def fake_submit_flow(request_json, request_cookies, function_id, fn_params):
+    def fake_submit_flow(request_json, request_cookies, function_id, fn_params, **_):
         return jsonify({"error": "boom", "messages": ["m1"], "code": 403}), 403
 
     monkeypatch.setattr("diamond_backend.app.tasks.submit_flow", fake_submit_flow)
@@ -116,7 +116,7 @@ def test_submit_task_missing_flow_run_id_returns_error(
     # task_id=None, and the route must report an error.
     _set_submit_slurm_job_function(SUBMIT_SLURM_JOB_FUNCTION_ID)
 
-    def fake_submit_flow(request_json, request_cookies, function_id, fn_params):
+    def fake_submit_flow(request_json, request_cookies, function_id, fn_params, **_):
         return jsonify({"flow_id": "FLOW-1"}), 200
 
     monkeypatch.setattr("diamond_backend.app.tasks.submit_flow", fake_submit_flow)
