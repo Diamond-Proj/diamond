@@ -57,7 +57,7 @@ variable "frontend_extra_env" {
 }
 
 variable "domain_name" {
-  description = "Custom domain for staging's frontend. See modules/app's variable of the same name. Once set and validated, keep it as this default (as dev/prod do) so a CI apply can't revert it to null and destroy the cert/HTTPS listener."
+  description = "Custom domain for staging's frontend. See modules/app's variable of the same name. Defaulted (not left null) so a plain `terraform apply` without -var -- including the CI deploy -- can't accidentally destroy the ACM cert/HTTPS listener by reverting this to null."
   type        = string
   default     = "staging.diamondhpc.ai"
 }

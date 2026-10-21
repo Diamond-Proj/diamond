@@ -55,6 +55,12 @@ variable "domain_name" {
   default     = "diamondhpc.ai"
 }
 
+variable "subject_alternative_names" {
+  description = "Extra names on prod's ACM cert. The public site is served at the apex (diamondhpc.ai) and at www.diamondhpc.ai, both Cloudflare-proxied to the same ALB as domain_name, so the cert has to cover all three. Defaulted for the same reason as domain_name: a CI apply without -var must not replace the cert with one missing a public name."
+  type        = list(string)
+  default     = ["diamondhpc.ai", "www.diamondhpc.ai"]
+}
+
 variable "db_url" {
   description = "TEST/experimental: pass the full postgres connection string directly (e.g. via TF_VAR_db_url) instead of reading it from Secrets Manager. See modules/app's variable of the same name for the tradeoffs. Leave unset for the normal path."
   type        = string
