@@ -145,7 +145,10 @@ resource "aws_ecs_task_definition" "frontend" {
           NEXT_PUBLIC_VERCEL_URL = "http://${aws_lb.main.dns_name}"
           # Public origin used to build auth redirects/Globus redirect_uri --
           # Next.js otherwise sees its own localhost:3000 listen address.
-          APP_BASE_URL = var.domain_name != null ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}"
+          APP_BASE_URL = coalesce(
+            var.public_base_url,
+            var.domain_name != null ? "https://${var.domain_name}" : "http://${aws_lb.main.dns_name}",
+          )
         }, var.frontend_extra_env) : { name = k, value = v }
       ]
       logConfiguration = {

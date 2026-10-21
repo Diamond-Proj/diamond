@@ -125,6 +125,12 @@ variable "domain_name" {
   default     = null
 }
 
+variable "public_base_url" {
+  description = "Public origin users should end up on (e.g. https://diamondhpc.ai), used as the frontend's APP_BASE_URL for auth redirects and the Globus redirect_uri. Defaults to https://<domain_name> (or the raw ALB URL without one). Set it when the site's canonical name is one of subject_alternative_names rather than domain_name -- it must be a name the cert covers and Globus has registered as <url>/auth/callback."
+  type        = string
+  default     = null
+}
+
 variable "subject_alternative_names" {
   description = "Extra hostnames the ACM cert should also cover (e.g. the apex diamondhpc.ai alongside domain_name = prod.diamondhpc.ai), so one cert serves every name that reaches this ALB. Each needs its own validation CNAME -- see acm_validation_records. Ignored when domain_name is null. Changing this replaces the cert; see alb.tf for the listener cleanup that replacement needs."
   type        = list(string)
