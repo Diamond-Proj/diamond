@@ -144,6 +144,33 @@ def _make_shell_function(cmd: str, **kwargs) -> ShellFunction:
     return shell_fn
 
 
+def get_user_home_directory():
+    import os
+
+    return {"home_directory": os.path.expanduser("~")}
+
+
+def submit_slurm_job(**params):
+    import os
+    import subprocess
+    from pathlib import Path
+
+    script = params["submit_task_script"]
+
+    location = os.path.expanduser(os.path.expandvars(params["location"]))
+    submit_file = Path(location) / f"{params['task_name']}.sh"
+    submit_file.write_text(script)
+    result = subprocess.run(
+        ["bash", submit_file],
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    if result.returncode != 0:
+        return f"{result.stdout}\n[exit code {result.returncode}]"
+    return result.stdout
+
+
 get_machine_metadata = _make_shell_function(
     _escape_shell_braces(_GET_MACHINE_METADATA_CMD)
 )
