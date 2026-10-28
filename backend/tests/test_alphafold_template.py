@@ -318,12 +318,16 @@ def test_submit_task_tags_alphafold_template(client, monkeypatch, test_endpoint_
 
     SUBMIT_SLURM_JOB_FUNCTION_ID = "FAKE-SUBMIT-SLURM-JOB-FUNCTION-ID"
     Functions.query.filter_by(name="submit_slurm_job").delete()
-    db.session.add(Functions(name="submit_slurm_job", function_id=SUBMIT_SLURM_JOB_FUNCTION_ID))
+    db.session.add(
+        Functions(name="submit_slurm_job", function_id=SUBMIT_SLURM_JOB_FUNCTION_ID)
+    )
     db.session.commit()
 
     def fake_submit_flow(request_json, request_cookies, function_id, fn_params, **_):
         captured["fn_params"] = fn_params
-        return __import__("flask").jsonify({"flow_run_id": "GC-TASK-AF-1", "flow_id": "FLOW-1"}), 200
+        return __import__("flask").jsonify(
+            {"flow_run_id": "GC-TASK-AF-1", "flow_id": "FLOW-1"}
+        ), 200
 
     monkeypatch.setattr(
         "diamond_backend.app.tasks.render_task_template_script",
