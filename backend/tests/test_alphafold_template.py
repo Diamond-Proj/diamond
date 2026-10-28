@@ -6,6 +6,8 @@ from uuid import uuid4
 import pytest
 
 from diamond_backend.app import g_database
+from diamond_backend.app.database.db import db
+from diamond_backend.app.database.models.function import Functions
 from diamond_backend.app.tasks import (
     ALPHAFOLD_TASK_TEMPLATES,
     _build_alphafold_task_log_info,
@@ -314,24 +316,22 @@ def test_submit_task_tags_alphafold_template(client, monkeypatch, test_endpoint_
         captured["context"] = context
         return "echo submit alphafold"
 
-    def fake_submit_batch_script_task(**kwargs):
-        captured["submission_kwargs"] = kwargs
-        return {
-            "task_id": "GC-TASK-AF-1",
-            "batch_job_id": "654321",
-            "task_name": kwargs["task_name"],
-            "stdout_path": kwargs["stdout_path"],
-            "stderr_path": kwargs["stderr_path"],
-            "artifact_path": "",
-        }
+    SUBMIT_SLURM_JOB_FUNCTION_ID = "FAKE-SUBMIT-SLURM-JOB-FUNCTION-ID"
+    Functions.query.filter_by(name="submit_slurm_job").delete()
+    db.session.add(Functions(name="submit_slurm_job", function_id=SUBMIT_SLURM_JOB_FUNCTION_ID))
+    db.session.commit()
+
+    def fake_submit_flow(request_json, request_cookies, function_id, fn_params, **_):
+        captured["fn_params"] = fn_params
+        return __import__("flask").jsonify({"flow_run_id": "GC-TASK-AF-1", "flow_id": "FLOW-1"}), 200
 
     monkeypatch.setattr(
         "diamond_backend.app.tasks.render_task_template_script",
         fake_render_task_template_script,
     )
     monkeypatch.setattr(
-        "diamond_backend.app.tasks.submit_batch_script_task",
-        fake_submit_batch_script_task,
+        "diamond_backend.app.tasks.submit_flow",
+        fake_submit_flow,
     )
     monkeypatch.setattr(
         "diamond_backend.app.tasks.load_container_module_command",
@@ -367,13 +367,14 @@ def test_submit_task_tags_alphafold_template(client, monkeypatch, test_endpoint_
     )
 
     assert response.status_code == 200, response.get_json()
-    assert response.get_json()["task_id"] == "GC-TASK-AF-1"
+    assert response.get_json()["flow_run_id"] == "GC-TASK-AF-1"
     assert captured["template_name"] == ALPHAFOLD_TEMPLATE
     assert captured["context"]["container_path"] == DEFAULT_SIF
     assert captured["context"]["sequence_text"] == "MKTAYIAK"
-    assert captured["submission_kwargs"]["log_path"] == (
-        "alphafold_task|pipeline=colabfold"
-    )
+    task = g_database.get_task(task_id="GC-TASK-AF-1")
+    assert task is not None
+    assert task.log_path == "alphafold_task|pipeline=colabfold"
+    g_database.delete_task("GC-TASK-AF-1")
 
 
 def test_get_task_status_marks_alphafold_tasks(
