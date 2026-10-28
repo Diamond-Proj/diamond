@@ -821,6 +821,105 @@ def diamond_endpoint_submit_job():
         return jsonify(payload), http_status
 
 
+SERVER_POLL_WINDOW = 60
+
+
+@app.route("/api/get_user_home_directory", methods=["POST"])
+@authenticated
+def diamond_get_user_home_directory():
+    """Resolve the remote user's home directory for an endpoint via the run_function flow."""
+    endpoint_id = request.json.get("endpoint")
+    task_name = "get_user_home_directory"
+    request_json = {"endpoint": endpoint_id, "taskName": task_name}
+
+    fn_entry = Functions.query.filter_by(name="get_user_home_directory").first()
+    if not fn_entry:
+        return jsonify(
+            {"error": "Function 'get_user_home_directory' is not registered"}
+        ), 500
+
+    function_id = fn_entry.function_id
+    identity_id = request.cookies.get("primary_identity")
+    user_endpoint_config = g_database.get_endpoint_user_config(
+        identity_id=identity_id, endpoint_uuid=endpoint_id
+    )
+    logger.info("get_user_home_directory user_endpoint_config: %s", user_endpoint_config)
+
+    try:
+        result, status_code = submit_flow(
+            request_json,
+            request.cookies,
+            function_id,
+            {},
+            user_endpoint_config=user_endpoint_config,
+        )
+    except DiamondResponseError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to submit get_user_home_directory flow")
+        return jsonify({"error": str(e)}), 500
+
+    if status_code != 200:
+        return result, status_code
+
+    if result.json.get("required_scopes") is not None:
+        return jsonify(
+            {
+                "error": "Additional scopes are required",
+                "required_scopes": result.json["required_scopes"],
+            }
+        ), 403
+
+    flow_run_id = result.json.get("flow_run_id")
+    if not flow_run_id:
+        logger.error("submit_flow returned no flow_run_id: %s", result.json)
+        return jsonify({"error": "Failed to submit flow: no flow run ID"}), 500
+
+    deadline = time.time() + SERVER_POLL_WINDOW
+    flow_status = None
+    while time.time() < deadline:
+        try:
+            flow_result = get_flow_result(request.cookies, flow_run_id)
+        except DiamondResponseError:
+            raise
+        except Exception as e:
+            logger.exception("Error polling flow result")
+            return jsonify({"error": str(e)}), 500
+        flow_status = flow_result.get("status")
+        if flow_status in ("SUCCEEDED", "FAILED", "INACTIVE"):
+            break
+        time.sleep(2)
+
+    if flow_status not in ("SUCCEEDED", "FAILED", "INACTIVE"):
+        return jsonify(
+            {"error": "Timed out waiting for flow run", "flow_run_id": flow_run_id}
+        ), 504
+
+    if flow_status in ("FAILED", "INACTIVE"):
+        logger.error(
+            "Flow run %s ended with status %s. Full result: %s",
+            flow_run_id,
+            flow_status,
+            flow_result,
+        )
+        return jsonify({"error": f"Flow run {flow_status}"}), 500
+
+    logger.info(f"get_user_home_directory flow_result: {flow_result}")
+    # Parse result; handle list-wrapped or direct dict.
+    try:
+        raw = flow_result["details"]["output"]["run_function"]["details"]["result"]
+    except (KeyError, TypeError) as e:
+        logger.exception("Unexpected flow result shape")
+        return jsonify({"error": f"Unexpected result shape: {e}"}), 500
+
+    if isinstance(raw, list):
+        raw = raw[0] if raw else {}
+    home_directory = (raw or {}).get("home_directory")
+
+    logger.info("get_user_home_directory result: %s", home_directory)
+    return jsonify({"home_directory": home_directory}), 200
+
+
 def _resolve_submitted_flow_tasks(identity_id):
     """Move SUBMITTING tasks on once their submit flow finishes.
 
