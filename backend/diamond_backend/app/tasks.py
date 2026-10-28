@@ -204,6 +204,21 @@ def _stage_task_define_uploads(
     return staged
 
 
+def _submit_flow_output(result):
+    """The submit script's output from a submit_slurm_job flow result.
+
+    The ShellFunction returns a dict (stderr is already folded into stdout);
+    endpoints too old to honor return_dict hand back a ShellResult, which
+    arrives as a string.
+    """
+    if not isinstance(result, dict):
+        return str(result)
+    output = result.get("stdout") or ""
+    if result.get("returncode"):
+        output += f"\n[exit code {result['returncode']}]"
+    return output
+
+
 def _extract_artifact_path_from_submit_stdout(submit_stdout):
     if not isinstance(submit_stdout, str):
         return ""
@@ -765,7 +780,7 @@ def diamond_endpoint_submit_job():
         "dataset_path": dataset_path,
         "task_command": task_command,
         "slurm_options": slurm_options,
-        "submit_task_script": submit_task_script,
+        "script_b64": base64.b64encode(submit_task_script.encode()).decode("ascii"),
     }
     try:
         result, status_code = submit_flow(
@@ -831,7 +846,7 @@ def _resolve_submitted_flow_tasks(identity_id):
         task_result = get_flow_result(request.cookies, task.task_id)
         flow_status = task_result.get("status", None)
         if flow_status == "SUCCEEDED":
-            submit_stdout = str(
+            submit_stdout = _submit_flow_output(
                 task_result["details"]["output"]["run_function"]["details"]["result"][0]
             )
             job_id_match = SBATCH_JOB_ID_PATTERN.search(submit_stdout)
