@@ -11,6 +11,8 @@ from globus_compute_sdk.serialize import AllCodeStrategies
 from diamond_backend.app.database.db import db
 from diamond_backend.app.database.models.flow import Flows
 from diamond_backend.app.database.models.function import Functions
+from diamond_backend.app.utils.flow_templates import FLOW_TEMPLATES
+from diamond_backend.app.utils.function_templates import STARTUP_FUNCTION_TEMPLATES
 from diamond_backend.app.utils.login_flow import (
     load_portal_client,  # Assuming this is used for auth
 )
@@ -23,64 +25,6 @@ RECREATE_FLOWS = False  # delete and recreate flows on startup (requires new Glo
 FLOW_MAX_AGE = timedelta(days=13)
 FLOW_RENEWAL_CHECK_INTERVAL = timedelta(days=1)
 RECREATE_FUNCTIONS = True  # delete and recreate functions on startup
-
-
-FLOW_TEMPLATES = {
-    "run_function": {
-        "definition": {
-            "States": {
-                "run_function": {
-                    "Type": "Action",
-                    "ActionUrl": "https://compute.actions.globus.org/v3",
-                    "Parameters": {
-                        "endpoint_id.$": "$.endpoint_id",
-                        "user_endpoint_config.$": "$.user_endpoint_config",
-                        "user_runtime.$": "$.user_runtime",
-                        "tasks": [
-                            {
-                                "function_id.$": "$.function_id",
-                                "kwargs.$": "$.function_kwargs",
-                            }
-                        ],
-                    },
-                    "ResultPath": "$.run_function",
-                    "End": True,
-                }
-            },
-            "StartAt": "run_function",
-        },
-        "input_schema": {
-            "type": "object",
-            "properties": {
-                "endpoint_id": {"type": "string", "format": "uuid"},
-                "function_id": {"type": "string", "format": "uuid"},
-                "function_kwargs": {"type": "object"},
-                "user_endpoint_config": {
-                    "type": "object",
-                    "properties": {
-                        "account": {"type": "string"},
-                        "partition": {"type": "string"},
-                    },
-                },
-                "user_runtime": {
-                    "type": "object",
-                    "properties": {
-                        "globus_compute_sdk_version": {"type": "string"},
-                        "python": {"type": "object"},
-                    },
-                },
-            },
-            "required": [
-                "endpoint_id",
-                "function_id",
-                "function_kwargs",
-                "user_endpoint_config",
-                "user_runtime",
-            ],
-        },
-        "title_prefix": "Run Function Flow",
-    }
-}
 
 
 def get_startup_flow_client():
@@ -199,33 +143,6 @@ def get_startup_function_client():
         raise
 
 
-# FUNCTION DEFINITIONS
-def submit_slurm_job(**params):
-    import os
-    import subprocess
-    from pathlib import Path
-
-    script = params["submit_task_script"]
-
-    location = os.path.expanduser(os.path.expandvars(params["location"]))
-    submit_file = Path(location) / f"{params['task_name']}.sh"
-    submit_file.write_text(script)
-    # stderr is folded in so a failed sbatch reports why instead of returning
-    # an empty string that the flow still counts as a success.
-    result = subprocess.run(
-        ["bash", submit_file],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if result.returncode != 0:
-        return f"{result.stdout}\n[exit code {result.returncode}]"
-    return result.stdout
-
-
-FUNCTION_TEMPLATES = {"submit_slurm_job": submit_slurm_job}
-
-
 def check_and_create_functions(app: Flask):
     with app.app_context():
         try:
@@ -237,8 +154,7 @@ def check_and_create_functions(app: Flask):
             )
             return
 
-        # Register SLURM shell script
-        for fn_name, fn_def in FUNCTION_TEMPLATES.items():
+        for fn_name, fn_def in STARTUP_FUNCTION_TEMPLATES.items():
             existing_fn = Functions.query.filter_by(name=fn_name).first()
 
             if existing_fn and RECREATE_FUNCTIONS:
