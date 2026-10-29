@@ -30,6 +30,8 @@ SBATCH_JOB_ID_PATTERN = re.compile(r"Submitted batch job (\d+)")
 # because the breaker is the only thing that notices an endpoint coming back:
 # a longer cooldown means a longer frozen UI after recovery.
 ENDPOINT_DOWN_TTL_SECONDS = max(30, int(os.getenv("ENDPOINT_DOWN_TTL_SECONDS", "60")))
+# Stay under the ALB's 60s idle timeout so a slow endpoint gets a real error.
+COMPUTE_RESULT_MAX_WAIT_SECONDS = 45
 
 SLURM_STATE_MAPPING = {
     "COMPLETING": "COMPLETED",
@@ -55,13 +57,21 @@ class TaskSubmissionError(Exception):
         return {"error": self.error, **self.payload}
 
 
-def _wait_for_compute_result(globus_compute_client, task_id, *, max_attempts=12):
+def _wait_for_compute_result(
+    globus_compute_client, task_id, *, max_wait_seconds=COMPUTE_RESULT_MAX_WAIT_SECONDS
+):
     compute_result = None
-    for attempt in range(max_attempts):
+    deadline = time.monotonic() + max_wait_seconds
+    attempt = 0
+    while True:
         try:
             compute_result = globus_compute_client.get_result(task_id)
         except TaskPending:
-            time.sleep(attempt)
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            attempt += 1
+            time.sleep(min(attempt, remaining))
             continue
         except Exception as exc:
             logger.exception("Failed to fetch results for task_id: %s", task_id)
@@ -74,7 +84,9 @@ def _wait_for_compute_result(globus_compute_client, task_id, *, max_attempts=12)
 
     if compute_result is None:
         raise TaskSubmissionError(
-            "Failed to submit job - task timed out after maximum attempts",
+            "Failed to submit job - the endpoint did not respond in time. It may "
+            "still be starting up; check that it is online before retrying.",
+            http_status=504,
             payload={"task_id": task_id},
         )
 

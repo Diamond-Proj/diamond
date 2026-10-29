@@ -6,6 +6,7 @@ from datetime import datetime, timedelta, timezone
 import globus_sdk
 from flask import Flask
 from globus_compute_sdk import Client as GlobusComputeClient
+from globus_compute_sdk import ShellFunction
 from globus_compute_sdk.serialize import AllCodeStrategies
 
 from diamond_backend.app.database.db import db
@@ -200,27 +201,15 @@ def get_startup_function_client():
 
 
 # FUNCTION DEFINITIONS
-def submit_slurm_job(**params):
-    import os
-    import subprocess
-    from pathlib import Path
-
-    script = params["submit_task_script"]
-
-    location = os.path.expanduser(os.path.expandvars(params["location"]))
-    submit_file = Path(location) / f"{params['task_name']}.sh"
-    submit_file.write_text(script)
-    # stderr is folded in so a failed sbatch reports why instead of returning
-    # an empty string that the flow still counts as a success.
-    result = subprocess.run(
-        ["bash", submit_file],
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    if result.returncode != 0:
-        return f"{result.stdout}\n[exit code {result.returncode}]"
-    return result.stdout
+# Runs the rendered submit script directly in bash. The script arrives
+# base64-encoded so it can't break out of the command line, and stderr is
+# folded into stdout so a failed sbatch reports why. return_dict makes the
+# result JSON ({stdout, stderr, returncode, ...}) for the flow's output.
+submit_slurm_job = ShellFunction(
+    "bash <(base64 -d <<< {script_b64}) 2>&1",
+    name="submit_slurm_job",
+    return_dict=True,
+)
 
 
 FUNCTION_TEMPLATES = {"submit_slurm_job": submit_slurm_job}
