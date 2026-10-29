@@ -773,9 +773,9 @@ def diamond_endpoint_submit_job():
             request.cookies,
             function_id,
             fn_params,
-            user_endpoint_config=g_database.get_endpoint_user_config(
-                identity_id=identity_id, endpoint_uuid=endpoint_id
-            ),
+            #user_endpoint_config=g_database.get_endpoint_user_config(
+            #    identity_id=identity_id, endpoint_uuid=endpoint_id
+            #),
         )
         if status_code != 200:
             return result, status_code
