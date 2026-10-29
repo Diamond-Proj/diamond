@@ -1,14 +1,19 @@
 import base64
+import json
 import logging
 import os
 import re
 import time
 import uuid
+from datetime import datetime
 
 from flask import Response, jsonify, request
 from globus_compute_sdk.errors import TaskPending
 
 from diamond_backend.app import app, g_database
+from diamond_backend.app.database.models.function import Functions
+from diamond_backend.app.errors import DiamondResponseError
+from diamond_backend.app.flows import get_flow_result, submit_flow
 from diamond_backend.app.task_runtime import (
     TaskSubmissionError,
     list_endpoint_directory,
@@ -16,7 +21,6 @@ from diamond_backend.app.task_runtime import (
     read_remote_task_log,
     refresh_identity_task_statuses,
     stage_base64_file_on_endpoint,
-    submit_batch_script_task,
 )
 from diamond_backend.app.utils.config_loader import (
     load_container_module_command,
@@ -75,6 +79,7 @@ def _resolve_artifact_mimetype(filename):
 
 
 ARTIFACT_PATH_MARKER_PATTERN = re.compile(r"^DIAMOND_ARTIFACT_PATH=(.+)$", re.MULTILINE)
+SBATCH_JOB_ID_PATTERN = re.compile(r"Submitted batch job (\d+)")
 VLLM_TASK_LOG_PREFIX = "vllm_task|"
 ALPHAFOLD_TASK_LOG_PREFIX = "alphafold_task|"
 # Task templates whose submissions are tagged as AlphaFold runs so the frontend
@@ -301,7 +306,6 @@ def _validate_vllm_chat_messages(messages):
 def invoke_vllm_chat_completion(
     batch_job_id, port, payload, timeout_seconds=120, endpoint_host=""
 ):
-    import json
     import subprocess
     import time
     from urllib import error as urllib_error
@@ -667,6 +671,7 @@ def diamond_endpoint_submit_job():
     location = g_database.get_diamond_dir(
         endpoint_uuid=endpoint_id, identity_id=identity_id
     )
+
     stdout_path = os.path.join(location, "logs", task_name + ".stdout")
     stderr_path = os.path.join(location, "logs", task_name + ".stderr")
 
@@ -735,35 +740,147 @@ def diamond_endpoint_submit_job():
             slurm_options=slurm_options,
         )
     logger.info(f"Submit task script: {submit_task_script}")
+
+    submit_slurm_job_fn = Functions.query.filter_by(name="submit_slurm_job").first()
+    if not submit_slurm_job_fn:
+        logger.error("submit_slurm_job function not found in database.")
+        return jsonify({"error": "submit_slurm_job function not initialized"}), 500
+    function_id = submit_slurm_job_fn.function_id
+    fn_params = {
+        **task_define,
+        "task_name": task_name,
+        "location": location,
+        "stdout_path": stdout_path,
+        "stderr_path": stderr_path,
+        "time_duration": time_duration,
+        "partition": partition,
+        "account": account,
+        "reservation": reservation,
+        "num_of_nodes": num_of_nodes,
+        "container": container_path,
+        "container_name": container_name,
+        "container_path": container_path,
+        "container_module_command": container_module_command,
+        "dataset_system_path": dataset_system_path,
+        "dataset_path": dataset_path,
+        "task_command": task_command,
+        "slurm_options": slurm_options,
+        "submit_task_script": submit_task_script,
+    }
     try:
-        submission = submit_batch_script_task(
-            endpoint_id=endpoint_id,
-            identity_id=identity_id,
+        result, status_code = submit_flow(
+            request.json,
+            request.cookies,
+            function_id,
+            fn_params,
+            #user_endpoint_config=g_database.get_endpoint_user_config(
+            #    identity_id=identity_id, endpoint_uuid=endpoint_id
+            #),
+        )
+        if status_code != 200:
+            return result, status_code
+
+        if result.json.get("required_scopes") is not None:
+            return jsonify(
+                {
+                    "error": "Additional scopes are required to submit the task",
+                    "required_scopes": result.json["required_scopes"],
+                }
+            ), 403
+
+        flow_run_id = result.json.get("flow_run_id")
+        if not flow_run_id:
+            logger.error("submit_flow returned no flow_run_id: %s", result.json)
+            return jsonify(
+                {"error": "Failed to submit task: no flow run ID was returned"}
+            ), 500
+
+        g_database.save_task(
+            task_id=flow_run_id,
+            batch_job_id="",
             task_name=task_name,
-            submit_script=submit_task_script,
+            identity_id=identity_id,
+            task_status="SUBMITTING",
+            task_create_time=datetime.now(),
             stdout_path=stdout_path,
             stderr_path=stderr_path,
             log_path=task_log_info,
+            compute_endpoint_id=endpoint_id,
             checkpoint_path=artifact_path,
-            checkpoint_path_extractor=_extract_artifact_path_from_submit_stdout,
         )
-    except TaskSubmissionError as exc:
-        return jsonify(exc.to_response_payload()), exc.http_status
+        return jsonify({"flow_run_id": flow_run_id})
+    except DiamondResponseError:
+        raise
+    except Exception as e:
+        logger.exception("Failed to submit task to Globus Flows")
+        http_status = getattr(e, "http_status", 500)
+        messages = getattr(e, "messages", None)
+        payload = {"error": str(e)}
+        if messages is not None:
+            payload["messages"] = messages
+        return jsonify(payload), http_status
 
-    return jsonify(
-        {
-            "task_id": submission["task_id"],
-            "batch_job_id": submission["batch_job_id"],
-            "task_name": submission["task_name"],
-            "message": "Task submitted successfully",
-        }
-    )
+
+def _resolve_submitted_flow_tasks(identity_id):
+    """Move SUBMITTING tasks on once their submit flow finishes.
+
+    A succeeded flow hands the task its SLURM job ID and leaves it PENDING, so
+    refresh_identity_task_statuses polls it like any other batch job.
+    """
+    for task in g_database.load_tasks(identity_id=identity_id, status="SUBMITTING"):
+        task_result = get_flow_result(request.cookies, task.task_id)
+        flow_status = task_result.get("status", None)
+        if flow_status == "SUCCEEDED":
+            submit_stdout = str(
+                task_result["details"]["output"]["run_function"]["details"]["result"][0]
+            )
+            job_id_match = SBATCH_JOB_ID_PATTERN.search(submit_stdout)
+            if not job_id_match:
+                logger.error(
+                    "Flow run for Task:%s succeeded but no SLURM job ID could be "
+                    "parsed from its output: %r",
+                    task.task_id,
+                    submit_stdout,
+                )
+                g_database.update_task_status(task.task_id, "FAILED")
+                continue
+
+            slurm_job_id = job_id_match.group(1)
+            logger.info(
+                "Updating submitted Task %s with SLURM job ID %s",
+                task.task_id,
+                slurm_job_id,
+            )
+            artifact_path = _extract_artifact_path_from_submit_stdout(submit_stdout)
+            if artifact_path:
+                g_database.update_task_checkpoint_path(task.task_id, artifact_path)
+            g_database.update_task_status(task.task_id, "PENDING")
+            g_database.update_task_id(task.task_id, slurm_job_id)
+        elif flow_status in ("FAILED", "INACTIVE"):
+            # INACTIVE covers flows stuck needing manual action (e.g. a
+            # consent requirement) — from the user's perspective the
+            # submission is stuck either way, so surface both as failures
+            # instead of leaving the task shown as SUBMITTING forever.
+            logger.error(
+                "Flow run for Task:%s ended with non-success status %s. Details: %s",
+                task.task_id,
+                flow_status,
+                task_result.get("details"),
+            )
+            g_database.update_task_status(task.task_id, "FAILED")
+        elif flow_status is None:
+            logger.warning(
+                "Unable to determine flow run status for Task:%s. Result: %s",
+                task.task_id,
+                task_result,
+            )
 
 
 @app.route("/api/get_task_status", methods=["GET"])
 @authenticated
 def diamond_get_task_status():
     identity_id = request.cookies.get("primary_identity")
+    _resolve_submitted_flow_tasks(identity_id)
     updated_tasks = refresh_identity_task_statuses(identity_id)
 
     # Format tasks data for JSON response

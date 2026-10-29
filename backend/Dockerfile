@@ -19,6 +19,7 @@ RUN --mount=type=cache,target=/root/.cache/uv \
     uv sync --frozen --no-dev
 
 COPY diamond_backend/ diamond_backend/
+COPY migrations/ migrations/
 
 ARG GIT_COMMIT_SHA
 ENV GIT_COMMIT_SHA=$GIT_COMMIT_SHA
@@ -27,4 +28,5 @@ EXPOSE 5328
 
 ENV GUNICORN_CMD_ARGS="--bind=0.0.0.0:5328"
 
-CMD ["uv", "run", "gunicorn", "diamond_backend.wsgi:app"]
+# Apply pending migrations, then serve.
+CMD ["sh", "-c", "uv run python -m diamond_backend.db_upgrade && exec uv run gunicorn diamond_backend.wsgi:app"]

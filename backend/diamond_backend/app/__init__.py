@@ -2,12 +2,14 @@ import os
 from datetime import datetime
 
 import logger
+import sqlalchemy as sa
 from dotenv import dotenv_values, load_dotenv
 from flask import Flask
 from flask_cors import CORS
 from werkzeug.middleware.proxy_fix import ProxyFix
 
 from diamond_backend.app.database.data_manager import Database
+from diamond_backend.app.database.db import db
 from diamond_backend.app.runtime_redis import RuntimeRedis
 
 # Load environment variables first, before any other imports or app creation
@@ -70,6 +72,25 @@ basedir = os.path.abspath(os.path.join(os.path.dirname(__file__), os.pardir))
 with app.app_context():
     g_database = Database(app)
 
+    from diamond_backend.app.utils.flow_manager import (
+        check_and_create_flows,
+        check_and_create_functions,
+        start_flow_renewal,
+    )
+
+    # `flask db upgrade` (and diamond_backend.db_upgrade) import this module
+    # too, before the migration that creates these tables has run.
+    inspector = sa.inspect(db.engine)
+    if inspector.has_table("flows") and inspector.has_table("functions"):
+        check_and_create_flows(app)
+        check_and_create_functions(app)
+        start_flow_renewal(app)
+    else:
+        logger.warning(
+            "flows/functions tables missing -- skipping startup flow creation "
+            "until migrations are applied"
+        )
+
 g_runtime_redis = RuntimeRedis()
 
 
@@ -79,6 +100,7 @@ def register_routes():
     from diamond_backend.app import containers as containers
     from diamond_backend.app import datasets as datasets
     from diamond_backend.app import endpoints as endpoints
+    from diamond_backend.app import flows as flows
     from diamond_backend.app import images as images
     from diamond_backend.app import profiles as profiles
     from diamond_backend.app import tasks as tasks

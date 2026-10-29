@@ -44,8 +44,9 @@ variable "rds_security_group_id" {
 }
 
 variable "db_url_secret_arn" {
-  description = "Secrets Manager ARN holding the full postgres connection string this instance's backend should use. Ignored if var.db_url is set."
+  description = "Secrets Manager ARN holding the full postgres connection string this instance's backend should use. Ignored if var.db_url is set; one of the two must be."
   type        = string
+  default     = null
 }
 
 variable "db_url" {
