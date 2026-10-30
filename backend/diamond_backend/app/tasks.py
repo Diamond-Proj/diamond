@@ -22,6 +22,7 @@ from diamond_backend.app.task_runtime import (
     refresh_identity_task_statuses,
     stage_base64_file_on_endpoint,
 )
+from diamond_backend.app.utils.compute import describe_task_owner
 from diamond_backend.app.utils.config_loader import (
     load_container_module_command,
 )
@@ -1094,6 +1095,9 @@ def diamond_vllm_chat():
         endpoint_host = g_database.get_endpoint_host(
             endpoint_uuid=task.compute_endpoint_id
         )
+        endpoint_name, username = describe_task_owner(
+            g_database, identity_id, task.compute_endpoint_id
+        )
         vllm_chat_task_id = globus_compute_wrapped_run(
             globus_compute_client,
             endpoint_id=task.compute_endpoint_id,
@@ -1106,6 +1110,8 @@ def diamond_vllm_chat():
                 "timeout_seconds": timeout_seconds,
                 "endpoint_host": endpoint_host,
             },
+            endpoint_name=endpoint_name,
+            username=username,
         )
     except Exception as e:
         logger.exception("Failed to submit vLLM chat request for task %s", task.task_id)

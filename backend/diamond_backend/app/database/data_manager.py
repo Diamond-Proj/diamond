@@ -447,6 +447,12 @@ class Database:
                 f"Endpoint not found for user {identity_id} and UUID {endpoint_uuid}"
             )
 
+    def get_endpoint_name(self, identity_id, endpoint_uuid):
+        endpoint = Endpoints.query.filter_by(
+            identity_id=identity_id, endpoint_uuid=endpoint_uuid
+        ).first()
+        return endpoint.endpoint_name if endpoint else None
+
     def get_diamond_dir(self, identity_id, endpoint_uuid):
         endpoint = Endpoints.query.filter_by(
             identity_id=identity_id, endpoint_uuid=endpoint_uuid
