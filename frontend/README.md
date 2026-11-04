@@ -133,10 +133,16 @@ reads Node from `.nvmrc` and pnpm from `package.json`.
 
 ### Git hooks
 
-The current `prepare` script sets `core.hooksPath` to `.githooks`, but the existing
-hook lives in `frontend/.githooks/` and assumes frontend commands run from the
-repository root. This setup has not been adapted to the monorepo. Use the checks
-above and CI rather than relying on automatic pre-commit validation.
+Installing frontend dependencies runs `prepare`, which sets `core.hooksPath` to
+`.githooks` at the repository root. When frontend files or their UI workflows
+are staged, the shared hook switches to `frontend/` and runs `pnpm typecheck`
+followed by `pnpm test`. This hook currently handles frontend checks only.
+Markdown-only changes skip application checks. Commits work from the repository
+root or a subdirectory. Playwright's Chromium browser must be installed for UI checks.
+
+For an existing checkout, run `pnpm run prepare` from `frontend/` to update the
+hook path. To explicitly skip the checks for one commit, use
+`SKIP_PRECOMMIT=1 git commit ...`.
 
 ## Production and Docker
 
