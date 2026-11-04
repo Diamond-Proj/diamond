@@ -1,0 +1,22 @@
+#!/usr/bin/env sh
+set -eu
+
+if [ "${SKIP_PRECOMMIT:-}" = "1" ]; then
+  echo "Skipping pre-commit checks because SKIP_PRECOMMIT=1"
+  exit 0
+fi
+
+repo_root=$(git rev-parse --show-toplevel)
+cd "$repo_root"
+
+# Markdown-only changes do not need application checks. Use Git pathspecs so
+# spaces and other special characters in staged filenames remain safe.
+if ! git diff --cached --quiet -- frontend/ .github/workflows/frontend-ui-regression.yml .github/workflows/ui-regression.yml \
+  ':(exclude,glob)**/*.md' ':(exclude,glob)**/*.mdx'; then
+  echo "Running frontend pre-commit checks..."
+  (
+    cd "$repo_root/frontend"
+    pnpm typecheck
+    pnpm test
+  )
+fi
