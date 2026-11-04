@@ -74,6 +74,18 @@ test.describe('Sign-in page', () => {
   test('clicking Sign In requests Globus OAuth with required params', async ({
     page
   }) => {
+    // Login fetches flow-specific scopes before navigating to Globus. CI runs
+    // without Flask, so supply that response as part of the OAuth test.
+    const flowScope =
+      'https://auth.globus.org/scopes/test-flow/flow_test_flow_user';
+    await page.route('**/api/globus_login_scopes', async (route) => {
+      await route.fulfill({
+        status: 200,
+        contentType: 'application/json',
+        body: JSON.stringify({ scopes: [flowScope] })
+      });
+    });
+
     // Intercept the navigation to Globus so we don't actually hit an external
     // service. We just want to verify the URL the app would send the user to.
     let capturedUrl: string | null = null;
@@ -96,6 +108,7 @@ test.describe('Sign-in page', () => {
     expect(url.searchParams.get('redirect_uri')).toContain('/auth/callback');
     expect(url.searchParams.get('response_type')).toBe('code');
     expect(url.searchParams.get('scope')).toBeTruthy();
+    expect(url.searchParams.get('scope')?.split(' ')).toContain(flowScope);
   });
 });
 
