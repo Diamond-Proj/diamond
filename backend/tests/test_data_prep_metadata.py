@@ -1,7 +1,6 @@
 import logging
 from unittest.mock import MagicMock
 
-from globus_compute_sdk.errors import TaskPending
 from globus_sdk import ComputeAPIError
 
 from diamond_backend.app.utils import data_prep
@@ -12,46 +11,6 @@ class FakeComputeAPIError(ComputeAPIError):
         self.code = code
         self.http_status = http_status
         self.messages = [message]
-
-
-class DummyResult:
-    def __init__(self, stdout: str):
-        self.stdout = stdout
-
-
-def test_wait_for_metadata_result_returns_after_pending(monkeypatch):
-    client = MagicMock()
-    result = DummyResult("payload")
-    client.get_result.side_effect = [TaskPending("pending"), result]
-    monkeypatch.setattr(data_prep.time, "sleep", lambda *_: None)
-
-    returned = data_prep._wait_for_metadata_result(
-        client,
-        "TASK_ID",
-        logging.getLogger("test"),
-        max_attempts=3,
-    )
-
-    assert returned is result
-
-
-def test_wait_for_metadata_result_times_out(monkeypatch):
-    client = MagicMock()
-
-    def _raise_pending(*_args, **_kwargs):
-        raise TaskPending("pending")
-
-    client.get_result.side_effect = _raise_pending
-    monkeypatch.setattr(data_prep.time, "sleep", lambda *_: None)
-
-    returned = data_prep._wait_for_metadata_result(
-        client,
-        "TASK_ID",
-        logging.getLogger("test"),
-        max_attempts=2,
-    )
-
-    assert returned is None
 
 
 def test_submit_metadata_task_retries_on_conflict(monkeypatch):
@@ -90,3 +49,23 @@ def test_submit_metadata_task_returns_none_on_non_retryable(monkeypatch):
     )
 
     assert task_id is None
+
+
+def test_wrapped_run_logs_endpoint_name_and_user(caplog):
+    client = MagicMock()
+    client.batch_run.return_value = {"tasks": {"FUNC_ID": ["TASK_ID"]}}
+
+    with caplog.at_level(logging.INFO, logger=data_prep.logger.name):
+        task_id = data_prep.globus_compute_wrapped_run(
+            client,
+            endpoint_id="ENDPOINT_ID",
+            function_id="FUNC_ID",
+            endpoint_name="Delta EP",
+            username="user@example.edu",
+        )
+
+    assert task_id == "TASK_ID"
+    assert (
+        "Submitting task to endpoint ENDPOINT_ID (Delta EP), user user@example.edu, "
+        "with user_config: None" in caplog.messages
+    )

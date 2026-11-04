@@ -1,11 +1,14 @@
 import logging
 import os
-import time
 
 from flask import jsonify, request
 
 from diamond_backend.app import app, g_database
 from diamond_backend.app.errors import RequestMalformed
+from diamond_backend.app.utils.compute import (
+    describe_task_owner,
+    wait_for_compute_result,
+)
 from diamond_backend.app.utils.config_loader import load_partitions
 from diamond_backend.app.utils.data_prep import (
     endpoint_initialization_status,
@@ -77,24 +80,25 @@ def diamond_set_diamond_work_path():
     user_endpoint_config = g_database.get_endpoint_user_config(
         identity_id=identity_id, endpoint_uuid=endpoint_uuid
     )
+    endpoint_name, username = describe_task_owner(
+        g_database, identity_id, endpoint_uuid
+    )
     check_diamond_work_path_task_id = globus_compute_wrapped_run(
         globus_compute_client,
         endpoint_id=endpoint_uuid,
         function_id=check_diamond_work_path_func_id,
         user_endpoint_config=user_endpoint_config,
         kwargs={"diamond_work_path": diamond_work_path},
+        endpoint_name=endpoint_name,
+        username=username,
     )
-    check_diamond_work_path_task_status = globus_compute_client.get_task(
-        check_diamond_work_path_task_id
-    )
-    while check_diamond_work_path_task_status["pending"]:
-        time.sleep(2)
-        check_diamond_work_path_task_status = globus_compute_client.get_task(
-            check_diamond_work_path_task_id
-        )
-        continue
-    check_diamond_work_path_task_result = globus_compute_client.get_result(
-        check_diamond_work_path_task_id
+    check_diamond_work_path_task_result = wait_for_compute_result(
+        globus_compute_client,
+        check_diamond_work_path_task_id,
+        endpoint_uuid,
+        logger,
+        endpoint_name=endpoint_name,
+        username=username,
     )
     if check_diamond_work_path_task_result == 0:
         return jsonify(
@@ -113,6 +117,8 @@ def diamond_set_diamond_work_path():
             "diamond_log_dir": diamond_log_dir,
             "diamond_image_dir": diamond_image_dir,
         },
+        endpoint_name=endpoint_name,
+        username=username,
     )
 
     g_database.save_diamond_dir(
