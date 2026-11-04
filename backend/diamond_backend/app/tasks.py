@@ -826,6 +826,8 @@ SERVER_POLL_WINDOW = 60
 def diamond_get_user_home_directory():
     """Resolve the remote user's home directory for an endpoint via the run_function flow."""
     endpoint_id = request.json.get("endpoint")
+    account = request.json.get("account")
+    partition = request.json.get("partition")
     task_name = "get_user_home_directory"
     request_json = {"endpoint": endpoint_id, "taskName": task_name}
 
@@ -836,10 +838,12 @@ def diamond_get_user_home_directory():
         ), 500
 
     function_id = fn_entry.function_id
+    # submit_flow builds the flow's user_endpoint_config from these params.
+    fn_params = {"account": account, "partition": partition}
 
     try:
         result, status_code = submit_flow(
-            request_json, request.cookies, function_id, {}
+            request_json, request.cookies, function_id, fn_params
         )
     except DiamondResponseError:
         raise

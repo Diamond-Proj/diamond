@@ -144,7 +144,8 @@ def _make_shell_function(cmd: str, **kwargs) -> ShellFunction:
     return shell_fn
 
 
-def get_user_home_directory():
+def get_user_home_directory(**_params):
+    # Accepts the account/partition task params the flow requires; unused here.
     import os
 
     return {"home_directory": os.path.expanduser("~")}
