@@ -135,6 +135,7 @@ def submit_flow(
                         "account": fn_params.get("account"),
                         "partition": fn_params.get("partition"),
                     },
+                    #"user_endpoint_config": user_endpoint_config or {},
                     "user_runtime": {
                         "globus_compute_sdk_version": fn_params.get(
                             "globus_compute_sdk_version", GLOBUS_COMPUTE_SDK_VERSION
