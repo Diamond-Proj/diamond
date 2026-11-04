@@ -18,9 +18,16 @@ is the frontend of the Diamond monorepo; the Python/Flask API lives in
 Frontend dependencies and `pnpm-lock.yaml` are managed in this directory.
 Backend Python dependencies are managed separately with uv.
 
-TypeScript stays on `~6.0.3` and ESLint on `^9.39.5`: the lint plugins used by
-`eslint-config-next` do not yet support TypeScript 7 and ESLint 10 together.
-Update these constraints once the plugins support them. The new
+TypeScript 7 and the TypeScript 6 API are installed side by side using the
+[official compatibility setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60):
+`@typescript/native` aliases TypeScript 7 and supplies `tsc` for `pnpm typecheck`;
+`typescript` aliases `@typescript/typescript6` for ESLint and editor tooling that
+still need the JavaScript compiler API. `tsc6` remains available explicitly.
+Next.js currently resolves its built-in build checker through `typescript`, so
+`pnpm build` checks with TypeScript 6; run `pnpm typecheck` as well to check with 7.
+
+ESLint 10 is supported by Next.js 16.4, although some bundled plugins still
+declare older peer ranges and produce installation warnings. The
 `react-hooks/set-state-in-effect` rule reports warnings while existing effects
 are migrated; the other lint rules retain their default severity.
 
