@@ -18,6 +18,12 @@ is the frontend of the Diamond monorepo; the Python/Flask API lives in
 Frontend dependencies and `pnpm-lock.yaml` are managed in this directory.
 Backend Python dependencies are managed separately with uv.
 
+TypeScript stays on `~6.0.3` and ESLint on `^9.39.5`: the lint plugins used by
+`eslint-config-next` do not yet support TypeScript 7 and ESLint 10 together.
+Update these constraints once the plugins support them. The new
+`react-hooks/set-state-in-effect` rule reports warnings while existing effects
+are migrated; the other lint rules retain their default severity.
+
 ## Quick start
 
 From the repository root:
