@@ -821,20 +821,20 @@ def diamond_endpoint_submit_job():
 SERVER_POLL_WINDOW = 60
 
 
-@app.route("/api/get_user_home_directory", methods=["POST"])
+@app.route("/api/get_user_slurm_info", methods=["POST"])
 @authenticated
-def diamond_get_user_home_directory():
-    """Resolve the remote user's home directory for an endpoint via the run_function flow."""
+def diamond_get_user_slurm_info():
+    """Fetch the user's home directory, Slurm accounts and partitions on an endpoint via the run_function flow."""
     endpoint_id = request.json.get("endpoint")
     account = request.json.get("account")
     partition = request.json.get("partition")
-    task_name = "get_user_home_directory"
+    task_name = "get_user_slurm_info"
     request_json = {"endpoint": endpoint_id, "taskName": task_name}
 
-    fn_entry = Functions.query.filter_by(name="get_user_home_directory").first()
+    fn_entry = Functions.query.filter_by(name="get_user_slurm_info").first()
     if not fn_entry:
         return jsonify(
-            {"error": "Function 'get_user_home_directory' is not registered"}
+            {"error": "Function 'get_user_slurm_info' is not registered"}
         ), 500
 
     function_id = fn_entry.function_id
@@ -848,7 +848,7 @@ def diamond_get_user_home_directory():
     except DiamondResponseError:
         raise
     except Exception as e:
-        logger.exception("Failed to submit get_user_home_directory flow")
+        logger.exception("Failed to submit get_user_slurm_info flow")
         return jsonify({"error": str(e)}), 500
 
     if status_code != 200:
@@ -896,7 +896,7 @@ def diamond_get_user_home_directory():
         )
         return jsonify({"error": f"Flow run {flow_status}"}), 500
 
-    logger.info(f"get_user_home_directory flow_result: {flow_result}")
+    logger.info(f"get_user_slurm_info flow_result: {flow_result}")
     # Parse result; handle list-wrapped or direct dict.
     try:
         raw = flow_result["details"]["output"]["run_function"]["details"]["result"]
@@ -906,10 +906,10 @@ def diamond_get_user_home_directory():
 
     if isinstance(raw, list):
         raw = raw[0] if raw else {}
-    home_directory = (raw or {}).get("home_directory")
+    raw = raw or {}
 
-    logger.info("get_user_home_directory result: %s", home_directory)
-    return jsonify({"home_directory": home_directory}), 200
+    logger.info("get_user_slurm_info result: %s", raw)
+    return jsonify(raw), 200
 
 
 def _resolve_submitted_flow_tasks(identity_id):
