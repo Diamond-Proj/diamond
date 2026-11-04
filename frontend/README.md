@@ -10,7 +10,7 @@ is the frontend of the Diamond monorepo; the Python/Flask API lives in
 
 ## Requirements
 
-- **Node.js 24.21.0 LTS**, pinned in [`.nvmrc`](.nvmrc).
+- **Node.js 26.13.0 LTS**, pinned in [`.nvmrc`](.nvmrc).
 - **pnpm 12.3.4**, pinned in [`package.json`](package.json).
 - A configured backend and Globus application credentials for normal application use.
   UI regression tests use mocks and do not require these services.
@@ -33,10 +33,14 @@ With nvm installed, select Node and activate the pinned pnpm version:
 ```bash
 nvm install
 nvm use
-corepack enable
+npm install --global corepack
+corepack enable pnpm
 corepack prepare pnpm@12.3.4 --activate
 pnpm install --frozen-lockfile
 ```
+
+Node.js 26 does not bundle Corepack, so install it with npm first, then use
+Corepack to activate the pinned pnpm version.
 
 If you use another Node version manager, select the version recorded in `.nvmrc`.
 
