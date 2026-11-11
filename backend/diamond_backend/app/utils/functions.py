@@ -144,11 +144,54 @@ def _make_shell_function(cmd: str, **kwargs) -> ShellFunction:
     return shell_fn
 
 
-def get_user_home_directory(**_params):
+def get_user_slurm_info(**_params):
     # Accepts the account/partition task params the flow requires; unused here.
+    # Runs on the endpoint, so it stays self-contained (stdlib imports only).
+    import getpass
     import os
+    import subprocess
 
-    return {"home_directory": os.path.expanduser("~")}
+    # Nested on purpose: Globus Compute ships only this function's source, so a
+    # module-level helper would raise NameError on the endpoint. Copy it into
+    # other remote functions that need it.
+    def run_command(cmd):
+        """Return (unique non-empty output lines in order, error or None)."""
+        try:
+            result = subprocess.run(
+                cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True
+            )
+        except OSError as e:
+            return [], str(e)
+        if result.returncode != 0:
+            return [], result.stderr.strip() or f"exit code {result.returncode}"
+        lines = []
+        for line in result.stdout.splitlines():
+            # sinfo marks the default partition with a trailing '*'.
+            value = line.strip().rstrip("*")
+            if value and value not in lines:
+                lines.append(value)
+        return lines, None
+
+    accounts, accounts_error = run_command(
+        [
+            "sacctmgr",
+            "show",
+            "associations",
+            "--noheader",
+            "-P",
+            f"user={getpass.getuser()}",
+            "format=Account",
+        ]
+    )
+    partitions, partitions_error = run_command(["sinfo", "-h", "-o", "%P"])
+
+    return {
+        "home_directory": os.path.expanduser("~"),
+        "accounts": accounts,
+        "accounts_error": accounts_error,
+        "partitions": partitions,
+        "partitions_error": partitions_error,
+    }
 
 
 def submit_slurm_job(**params):

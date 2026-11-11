@@ -3,6 +3,7 @@ from unittest.mock import MagicMock, patch
 from diamond_backend.app.utils.functions import (
     _GET_MACHINE_METADATA_CMD,
     _escape_shell_braces,
+    get_user_slurm_info,
 )
 
 
@@ -203,3 +204,49 @@ def test_unknown_batch_system():
     """Test handling of unknown batch systems."""
     assert "else:" in _GET_MACHINE_METADATA_CMD
     assert 'batch_system = "unknown"' in _GET_MACHINE_METADATA_CMD
+
+
+@patch("os.path.expanduser", return_value="/home/testuser")
+@patch("getpass.getuser", return_value="testuser")
+@patch("subprocess.run")
+def test_get_user_slurm_info_returns_accounts_and_partitions(
+    mock_run, _mock_getuser, _mock_expanduser
+):
+    mock_run.side_effect = [
+        MagicMock(returncode=0, stdout="acct1\nacct2\nacct1\n", stderr=""),
+        MagicMock(returncode=0, stdout="cpu*\ngpu\ncpu\n", stderr=""),
+    ]
+
+    result = get_user_slurm_info(account="acct1", partition="cpu")
+
+    assert result == {
+        "home_directory": "/home/testuser",
+        "accounts": ["acct1", "acct2"],
+        "accounts_error": None,
+        "partitions": ["cpu", "gpu"],
+        "partitions_error": None,
+    }
+    sacctmgr_cmd = mock_run.call_args_list[0].args[0]
+    assert sacctmgr_cmd[0] == "sacctmgr"
+    assert "user=testuser" in sacctmgr_cmd
+    assert mock_run.call_args_list[1].args[0] == ["sinfo", "-h", "-o", "%P"]
+
+
+@patch("os.path.expanduser", return_value="/home/testuser")
+@patch("getpass.getuser", return_value="testuser")
+@patch("subprocess.run")
+def test_get_user_slurm_info_reports_slurm_errors(
+    mock_run, _mock_getuser, _mock_expanduser
+):
+    mock_run.side_effect = [
+        FileNotFoundError("sacctmgr not found"),
+        MagicMock(returncode=1, stdout="", stderr="slurm_load_partitions failed"),
+    ]
+
+    result = get_user_slurm_info()
+
+    assert result["home_directory"] == "/home/testuser"
+    assert result["accounts"] == []
+    assert result["accounts_error"] == "sacctmgr not found"
+    assert result["partitions"] == []
+    assert result["partitions_error"] == "slurm_load_partitions failed"
