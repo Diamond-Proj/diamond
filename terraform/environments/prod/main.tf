@@ -80,4 +80,5 @@ module "app" {
 
   domain_name               = var.domain_name
   subject_alternative_names = var.subject_alternative_names
+  public_base_url           = var.public_base_url
 }

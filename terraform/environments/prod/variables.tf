@@ -67,3 +67,9 @@ variable "db_url" {
   default     = null
   sensitive   = true
 }
+
+variable "public_base_url" {
+  description = "Canonical public origin for prod -- where logins start and land (APP_BASE_URL / Globus redirect_uri). The apex, not domain_name, since that's the public site; prod.diamondhpc.ai stays the cert's primary name. Must have <url>/auth/callback registered on the Globus app."
+  type        = string
+  default     = "https://diamondhpc.ai"
+}
