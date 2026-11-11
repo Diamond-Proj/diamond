@@ -10,13 +10,26 @@ is the frontend of the Diamond monorepo; the Python/Flask API lives in
 
 ## Requirements
 
-- **Node.js 24.21.0 LTS**, pinned in [`.nvmrc`](.nvmrc).
+- **Node.js 26.13.0 LTS**, pinned in [`.nvmrc`](.nvmrc).
 - **pnpm 12.3.4**, pinned in [`package.json`](package.json).
 - A configured backend and Globus application credentials for normal application use.
   UI regression tests use mocks and do not require these services.
 
 Frontend dependencies and `pnpm-lock.yaml` are managed in this directory.
 Backend Python dependencies are managed separately with uv.
+
+TypeScript 7 and the TypeScript 6 API are installed side by side using the
+[official compatibility setup](https://devblogs.microsoft.com/typescript/announcing-typescript-7-0/#running-side-by-side-with-typescript-60):
+`@typescript/native` aliases TypeScript 7 and supplies `tsc` for `pnpm typecheck`;
+`typescript` aliases `@typescript/typescript6` for ESLint and editor tooling that
+still need the JavaScript compiler API. `tsc6` remains available explicitly.
+Next.js currently resolves its built-in build checker through `typescript`, so
+`pnpm build` checks with TypeScript 6; run `pnpm typecheck` as well to check with 7.
+
+ESLint 10 is supported by Next.js 16.4, although some bundled plugins still
+declare older peer ranges and produce installation warnings. The
+`react-hooks/set-state-in-effect` rule reports warnings while existing effects
+are migrated; the other lint rules retain their default severity.
 
 ## Quick start
 
@@ -33,10 +46,14 @@ With nvm installed, select Node and activate the pinned pnpm version:
 ```bash
 nvm install
 nvm use
-corepack enable
+npm install --global corepack
+corepack enable pnpm
 corepack prepare pnpm@12.3.4 --activate
 pnpm install --frozen-lockfile
 ```
+
+Node.js 26 does not bundle Corepack, so install it with npm first, then use
+Corepack to activate the pinned pnpm version.
 
 If you use another Node version manager, select the version recorded in `.nvmrc`.
 
